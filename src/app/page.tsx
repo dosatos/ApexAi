@@ -1,6 +1,6 @@
 "use client";
 
-import { useCoAgent, useCopilotAction, useCoAgentStateRender, useCopilotAdditionalInstructions, useLangGraphInterrupt } from "@copilotkit/react-core";
+import { useCoAgent, useCopilotAction, useCoAgentStateRender, useCopilotAdditionalInstructions } from "@copilotkit/react-core";
 import { CopilotKitCSSProperties, CopilotChat, CopilotPopup } from "@copilotkit/react-ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type React from "react";
@@ -205,27 +205,20 @@ export default function CopilotKitPage() {
     })(),
   });
 
-  // HITL: dropdown selector for item choice using LangGraph interrupt
-  useLangGraphInterrupt({
-    enabled: ({ eventValue }) => {
-      try {
-        return typeof eventValue === "object" && eventValue?.type === "choose_item";
-      } catch {
-        return false;
-      }
-    },
-    render: ({ event, resolve }) => {
+  // Tool-based HITL: choose item
+  useCopilotAction({
+    name: "choose_item",
+    description: "Ask the user to choose an item id from the canvas.",
+    available: "remote",
+    parameters: [
+      { name: "content", type: "string", required: false, description: "Prompt to display." },
+    ],
+    renderAndWaitForResponse: ({ respond, args, status }) => {
       const items = viewState.items ?? initialState.items;
       if (!items.length) {
         return (
           <div className="rounded-md border bg-white p-4 text-sm shadow">
             <p>No items available.</p>
-            <button
-              className="mt-3 rounded border px-3 py-1"
-              onClick={() => resolve("")}
-            >
-              Close
-            </button>
           </div>
         );
       }
@@ -233,7 +226,7 @@ export default function CopilotKitPage() {
       return (
         <div className="rounded-md border bg-white p-4 text-sm shadow">
           <p className="mb-2 font-medium">Select an item</p>
-          <p className="mb-3 text-xs text-gray-600">{(event?.value as { content?: string })?.content ?? "Which item should I use?"}</p>
+          <p className="mb-3 text-xs text-gray-600">{(args as any)?.content ?? "Which item should I use?"}</p>
           <select
             className="w-full rounded border px-2 py-1"
             defaultValue={selectedId}
@@ -241,41 +234,30 @@ export default function CopilotKitPage() {
               selectedId = e.target.value;
             }}
           >
-            {items.map((p) => (
+            {(items).map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name} ({p.id})
               </option>
             ))}
           </select>
           <div className="mt-3 flex justify-end gap-2">
-            <button
-              className="rounded border px-3 py-1"
-              onClick={() => resolve("")}
-            >
-              Cancel
-            </button>
-            <button
-              className="rounded border bg-blue-600 px-3 py-1 text-white"
-              onClick={() => resolve(selectedId)}
-            >
-              Use item
-            </button>
+            <button className="rounded border px-3 py-1" onClick={() => respond?.("")}>Cancel</button>
+            <button className="rounded border bg-blue-600 px-3 py-1 text-white" onClick={() => respond?.(selectedId)}>Use item</button>
           </div>
         </div>
       );
     },
   });
 
-  // HITL: choose a card type when not specified
-  useLangGraphInterrupt({
-    enabled: ({ eventValue }) => {
-      try {
-        return typeof eventValue === "object" && eventValue?.type === "choose_card_type";
-      } catch {
-        return false;
-      }
-    },
-    render: ({ event, resolve }) => {
+  // Tool-based HITL: choose card type
+  useCopilotAction({
+    name: "choose_card_type",
+    description: "Ask the user to choose a card type to create.",
+    available: "remote",
+    parameters: [
+      { name: "content", type: "string", required: false, description: "Prompt to display." },
+    ],
+    renderAndWaitForResponse: ({ respond, args, status }) => {
       const options: { id: CardType; label: string }[] = [
         { id: "project", label: "Project" },
         { id: "entity", label: "Entity" },
@@ -286,7 +268,7 @@ export default function CopilotKitPage() {
       return (
         <div className="rounded-md border bg-white p-4 text-sm shadow">
           <p className="mb-2 font-medium">Select a card type</p>
-          <p className="mb-3 text-xs text-gray-600">{(event?.value as { content?: string })?.content ?? "Which type of card should I create?"}</p>
+          <p className="mb-3 text-xs text-gray-600">{(args as any)?.content ?? "Which type of card should I create?"}</p>
           <select
             className="w-full rounded border px-2 py-1"
             defaultValue=""
@@ -300,10 +282,10 @@ export default function CopilotKitPage() {
             ))}
           </select>
           <div className="mt-3 flex justify-end gap-2">
-            <button className="rounded border px-3 py-1" onClick={() => resolve("")}>Cancel</button>
+            <button className="rounded border px-3 py-1" onClick={() => respond?.("")}>Cancel</button>
             <button
               className="rounded border bg-blue-600 px-3 py-1 text-white"
-              onClick={() => selected && resolve(selected)}
+              onClick={() => selected && respond?.(selected)}
               disabled={!selected}
             >
               Use type

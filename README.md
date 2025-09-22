@@ -149,7 +149,7 @@ The main UI component is in [`src/app/page.tsx`](https://github.com/CopilotKit/c
 - **State Synchronization**: Uses `useCoAgent` hook for real-time state sync with the agent
 - **Frontend Actions**: Exposed as tools to the AI agent via `useCopilotAction`
 - **Plan Visualization**: Shows multi-step plan execution with progress indicators
-- **HITL Interrupts**: Uses `useLangGraphInterrupt` for disambiguation prompts
+- **HITL (Tool-based)**: Uses `useCopilotAction` with `renderAndWaitForResponse` for disambiguation prompts (e.g., choosing an item or card type)
 
 ### Backend (LlamaIndex Agent)
 The agent logic is in [`agent/agent/agent.py`](https://github.com/CopilotKit/canvas-with-llamaindex/blob/main/agent/agent/agent.py). It features:
