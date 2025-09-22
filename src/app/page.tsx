@@ -12,7 +12,7 @@ import CardRenderer from "@/components/canvas/CardRenderer";
 import ShikiHighlighter from "react-shiki/web";
 import { motion, useScroll, useTransform, useMotionValueEvent } from "motion/react";
 import { EmptyState } from "@/components/empty-state";
-import { cn } from "@/lib/utils";
+import { cn, getContentArg } from "@/lib/utils";
 import type { AgentState, PlanStep, Item, ItemData, ProjectData, EntityData, NoteData, ChartData, CardType } from "@/lib/canvas/types";
 import { initialState, isNonEmptyAgentState } from "@/lib/canvas/state";
 import { projectAddField4Item, projectSetField4ItemText, projectSetField4ItemDone, projectRemoveField4Item, chartAddField1Metric, chartSetField1Label, chartSetField1Value, chartRemoveField1Metric } from "@/lib/canvas/updates";
@@ -211,7 +211,7 @@ export default function CopilotKitPage() {
     parameters: [
       { name: "content", type: "string", required: false, description: "Prompt to display." },
     ],
-    renderAndWaitForResponse: ({ respond, args, status }) => {
+    renderAndWaitForResponse: ({ respond, args }) => {
       const items = viewState.items ?? initialState.items;
       if (!items.length) {
         return (
@@ -224,7 +224,7 @@ export default function CopilotKitPage() {
       return (
         <div className="rounded-md border bg-white p-4 text-sm shadow">
           <p className="mb-2 font-medium">Select an item</p>
-          <p className="mb-3 text-xs text-gray-600">{(args as any)?.content ?? "Which item should I use?"}</p>
+          <p className="mb-3 text-xs text-gray-600">{getContentArg(args) ?? "Which item should I use?"}</p>
           <select
             className="w-full rounded border px-2 py-1"
             defaultValue={selectedId}
@@ -255,7 +255,7 @@ export default function CopilotKitPage() {
     parameters: [
       { name: "content", type: "string", required: false, description: "Prompt to display." },
     ],
-    renderAndWaitForResponse: ({ respond, args, status }) => {
+    renderAndWaitForResponse: ({ respond, args }) => {
       const options: { id: CardType; label: string }[] = [
         { id: "project", label: "Project" },
         { id: "entity", label: "Entity" },
@@ -266,7 +266,7 @@ export default function CopilotKitPage() {
       return (
         <div className="rounded-md border bg-white p-4 text-sm shadow">
           <p className="mb-2 font-medium">Select a card type</p>
-          <p className="mb-3 text-xs text-gray-600">{(args as any)?.content ?? "Which type of card should I create?"}</p>
+          <p className="mb-3 text-xs text-gray-600">{getContentArg(args) ?? "Which type of card should I create?"}</p>
           <select
             className="w-full rounded border px-2 py-1"
             defaultValue=""
