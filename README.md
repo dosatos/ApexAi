@@ -49,14 +49,34 @@ yarn install
 bun install
 ```
 
-> **Note:** Installing the package dependencies will also install the agent's Python dependencies via the `install:agent` script.
+2. Install Python dependencies for the LlamaIndex agent:
+```bash
+# Using pnpm
+pnpm install:agent
 
-2. Set up your OpenAI API key:
+# Using npm
+npm run install:agent
+
+# Using yarn
+yarn install:agent
+
+# Using bun
+bun run install:agent
+```
+
+> **Note:** This will automatically setup a `.venv` (virtual environment) inside the `agent` directory.  
+>
+> To activate the virtual environment manually, you can run:
+> ```bash
+> source agent/.venv/bin/activate
+> ```
+
+3. Set up your OpenAI API key:
 ```bash
 export OPENAI_API_KEY="your-openai-api-key-here"
 ```
 
-3. Start the development server:
+4. Start the development server:
 ```bash
 # Using pnpm
 pnpm dev
