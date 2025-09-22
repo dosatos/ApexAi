@@ -140,7 +140,6 @@ export default function CopilotKitPage() {
     },
   });
 
-  // Modern JS does respect insertion order of JS objects, so we can show the keys in a sensible order in the JSON preview
   const getStatePreviewJSON = (s: AgentState | undefined): Record<string, unknown> => {
     const snapshot = (s ?? initialState) as AgentState;
     const { globalTitle, globalDescription, items } = snapshot;
@@ -151,7 +150,6 @@ export default function CopilotKitPage() {
     };
   };
 
-  // Removed chat hook render; we'll display plan tracker inline in the sidebar header below
 
   // Strengthen grounding: always prefer shared state over chat history
   useCopilotAdditionalInstructions({
