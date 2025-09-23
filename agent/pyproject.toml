@@ -12,6 +12,7 @@ dependencies = [
     "llama-index-core>=0.12.41,<0.13",
     "llama-index-agent-openai>=0.4.9,<0.5",
     "llama-index-protocols-ag-ui>=0.1.2",
+    "python-dotenv>=1.0.1",
     "jsonpatch>=1.33",
     "uvicorn>=0.27.0",
     "fastapi>=0.100.0",
