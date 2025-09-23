@@ -102,6 +102,7 @@ SYSTEM_PROMPT = (
     + FIELD_SCHEMA +
     "\nMUTATION/TOOL POLICY:\n"
     "- When you claim to create/update/delete, you MUST call the corresponding tool(s) (frontend or backend).\n"
+    "- To create new cards, call the frontend tool `createItem` with `type` in {project, entity, note, chart} and optional `name`.\n"
     "- After tools run, rely on the latest shared state (ground truth) when replying.\n"
     "- To set a card's subtitle (never the data fields): use setItemSubtitleOrDescription.\n\n"
     "DESCRIPTION MAPPING:\n"
@@ -119,8 +120,7 @@ SYSTEM_PROMPT = (
 
 agentic_chat_router = get_ag_ui_workflow_router(
     llm=OpenAI(model="gpt-4.1"),
-    # Frontend tools are provided dynamically by CopilotKit; no need to mirror them here.
-    frontend_tools=[],
+    # Frontend tools are provided dynamically by CopilotKit via AG-UI; omit explicit whitelist.
     backend_tools=[set_plan, update_plan_progress, complete_plan],
     system_prompt=SYSTEM_PROMPT,
     initial_state={
