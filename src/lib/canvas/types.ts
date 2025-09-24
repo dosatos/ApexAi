@@ -52,21 +52,12 @@ export interface Item {
   data: ItemData;
 }
 
-export interface PlanStep {
-  title: string;
-  status: "pending" | "in_progress" | "completed" | "blocked" | "failed";
-  note?: string;
-}
-
 export interface AgentState {
   items: Item[];
   globalTitle: string;
   globalDescription: string;
   lastAction?: string;
   itemsCreated: number;
-  planSteps: PlanStep[];
-  currentStepIndex: number;
-  planStatus: string;
 }
 
 

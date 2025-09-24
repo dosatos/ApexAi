@@ -1,19 +1,18 @@
 "use client";
 
-import { useCoAgent, useCopilotAction, useCoAgentStateRender, useCopilotAdditionalInstructions } from "@copilotkit/react-core";
+import { useCoAgent, useCopilotAction, useCopilotAdditionalInstructions } from "@copilotkit/react-core";
 import { CopilotKitCSSProperties, CopilotChat, CopilotPopup } from "@copilotkit/react-ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type React from "react";
 import { Button } from "@/components/ui/button"
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import AppChatHeader, { PopupHeader } from "@/components/canvas/AppChatHeader";
-import { X, Check, Loader2 } from "lucide-react"
+import { X } from "lucide-react"
 import CardRenderer from "@/components/canvas/CardRenderer";
 import ShikiHighlighter from "react-shiki/web";
 import { motion, useScroll, useTransform, useMotionValueEvent } from "motion/react";
 import { EmptyState } from "@/components/empty-state";
 import { cn, getContentArg } from "@/lib/utils";
-import type { AgentState, PlanStep, Item, ItemData, ProjectData, EntityData, NoteData, ChartData, CardType } from "@/lib/canvas/types";
+import type { AgentState, Item, ItemData, ProjectData, EntityData, NoteData, ChartData, CardType } from "@/lib/canvas/types";
 import { initialState, isNonEmptyAgentState } from "@/lib/canvas/state";
 import { projectAddField4Item, projectSetField4ItemText, projectSetField4ItemDone, projectRemoveField4Item, chartAddField1Metric, chartSetField1Label, chartSetField1Value, chartRemoveField1Metric } from "@/lib/canvas/updates";
 import useMediaQuery from "@/hooks/use-media-query";
@@ -48,21 +47,6 @@ export default function CopilotKitPage() {
   const lastCreationRef = useRef<{ type: CardType; name: string; id: string; ts: number } | null>(null);
   const lastChecklistCreationRef = useRef<Record<string, { text: string; id: string; ts: number }>>({});
   const lastMetricCreationRef = useRef<Record<string, { label: string; value: number | ""; id: string; ts: number }>>({});
-  // Strong idempotency during plan execution: allow only one creation per type while plan runs
-  const createdByTypeRef = useRef<Partial<Record<CardType, string>>>({});
-  const prevPlanStatusRef = useRef<string | null>(null);
-
-  // Reset per-plan idempotency map on plan start/end or when plan definition changes
-  useEffect(() => {
-    const status = String(viewState?.planStatus ?? "");
-    const prevStatus = prevPlanStatusRef.current;
-    const started = status === "in_progress" && prevStatus !== "in_progress";
-    const ended = prevStatus === "in_progress" && (status === "completed" || status === "failed" || status === "");
-    if (started || ended) {
-      createdByTypeRef.current = {};
-    }
-    prevPlanStatusRef.current = status;
-  }, [viewState?.planStatus]);
 
   useMotionValueEvent(scrollY, "change", (y) => {
     const disable = y >= headerScrollThreshold;
@@ -85,60 +69,7 @@ export default function CopilotKitPage() {
     }
   }, [viewState?.items, showJsonView]);
 
-  // Use cached viewState to derive plan-related fields
-  const planStepsMemo = (viewState?.planSteps ?? initialState.planSteps) as PlanStep[];
-  const planStatusMemo = viewState?.planStatus ?? initialState.planStatus;
-  const currentStepIndexMemo = typeof viewState?.currentStepIndex === "number" ? viewState.currentStepIndex : initialState.currentStepIndex;
 
-  // One-time final summary renderer in chat when plan completes or fails
-  useCoAgentStateRender<AgentState>({
-    name: "sample_agent",
-    nodeName: "plan-final-summary",
-    render: ({ state }) => {
-      const status = String(state?.planStatus ?? "");
-      const steps = (state?.planSteps ?? []) as PlanStep[];
-      if (!Array.isArray(steps) || steps.length === 0) return null;
-      if (status !== "completed" && status !== "failed") return null;
-      const count = steps.length;
-      return (
-        <div className="my-2 w-full">
-          <Accordion type="single" collapsible defaultValue="done">
-            <AccordionItem value="done">
-              <AccordionTrigger className="text-xs">
-                <span className="inline-flex items-center gap-2">
-                  <Check className={cn("h-4 w-4", status === "completed" ? "text-green-600" : "text-red-600")} />
-                  <span className="font-medium">{count} steps {status}</span>
-                </span>
-              </AccordionTrigger>
-              <AccordionContent>
-                <div className="rounded-2xl border shadow-sm bg-card p-4">
-                  <div className="mb-2 text-xs font-semibold">Plan <span className={cn("ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium border", status === "completed" ? "text-green-700 border-green-300 bg-green-50" : "text-red-700 border-red-300 bg-red-50")}>{status}</span></div>
-                  <ol className="space-y-1">
-                    {steps.map((s, i) => (
-                      <li key={`${s.title ?? "step"}-${i}`} className="flex items-start gap-2">
-                        <span className="mt-0.5 inline-flex h-4 w-4 items-center justify-center">
-                          {String(s.status).toLowerCase() === "completed" ? (
-                            <Check className="h-4 w-4 text-green-600" />
-                          ) : String(s.status).toLowerCase() === "failed" ? (
-                            <X className="h-4 w-4 text-red-600" />
-                          ) : (
-                            <span className="block h-2 w-2 rounded-full bg-gray-300" />
-                          )}
-                        </span>
-                        <div className="flex-1 text-xs">
-                          <div className={cn("leading-5", String(s.status).toLowerCase() === "completed" && "text-green-700", String(s.status).toLowerCase() === "failed" && "text-red-700")}>{s.title ?? `Step ${i + 1}`}</div>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </div>
-      );
-    },
-  });
 
   const getStatePreviewJSON = (s: AgentState | undefined): Record<string, unknown> => {
     const snapshot = (s ?? initialState) as AgentState;
@@ -393,20 +324,7 @@ export default function CopilotKitPage() {
         data: defaultDataFor(t),
       };
       const nextItems = [...items, item];
-      // clamp to one per type when plan is active
-      const planActive = String(base?.planStatus ?? "") === "in_progress";
-      let deduped = nextItems;
-      if (planActive) {
-        const seen = new Set<string>();
-        deduped = [];
-        for (const it of nextItems) {
-          const key = it.type;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          deduped.push(it);
-        }
-      }
-      return { ...base, items: deduped, itemsCreated: nextNumber, lastAction: `created:${createdId}` } as AgentState;
+      return { ...base, items: nextItems, itemsCreated: nextNumber, lastAction: `created:${createdId}` } as AgentState;
     });
     return createdId;
   }, [defaultDataFor, setState]);
@@ -901,21 +819,7 @@ export default function CopilotKitPage() {
     handler: ({ type, name }: { type: string; name?: string }) => {
       const t = (type as CardType);
       const normalized = (name ?? "").trim();
-      const planStatus = String(viewState?.planStatus ?? "");
 
-      // Per-plan strict idempotency: during an active plan, only one creation per type
-      if (planStatus === "in_progress") {
-        // If any item of this type already exists, return its id instead of creating another
-        const existingOfType = (viewState.items ?? initialState.items).find((it) => it.type === t);
-        if (existingOfType) {
-          createdByTypeRef.current[t] = existingOfType.id;
-          return existingOfType.id;
-        }
-        const existingCreatedId = createdByTypeRef.current[t];
-        if (existingCreatedId) {
-          return existingCreatedId;
-        }
-      }
       // 1) Name-based idempotency: if an item with same type+name exists, return it
       if (normalized) {
         const existing = (viewState.items ?? initialState.items).find((it) => it.type === t && (it.name ?? "").trim() === normalized);
@@ -931,9 +835,6 @@ export default function CopilotKitPage() {
       }
       const id = addItem(t, name);
       lastCreationRef.current = { type: t, name: normalized, id, ts: now };
-      if (planStatus === "in_progress") {
-        createdByTypeRef.current[t] = id;
-      }
       return id;
     },
   });
@@ -977,79 +878,6 @@ export default function CopilotKitPage() {
           <div className="h-full flex flex-col align-start w-full shadow-lg rounded-2xl border border-sidebar-border overflow-hidden">
             {/* Chat Header */}
             <AppChatHeader />
-            {/* Sidebar Plan Tracker or Completed Summary */}
-            {(() => {
-              const steps = planStepsMemo;
-              const count = steps.length;
-              const status = String(planStatusMemo ?? "");
-              if (!Array.isArray(steps) || count === 0 || status === "completed" || status === "failed" || status === "") return null;
-              if (status === "completed") {
-                return (
-                  <div className="px-4 pt-3 border-b">
-                    <Accordion type="single" collapsible>
-                      <AccordionItem value="done">
-                        <AccordionTrigger className="text-xs pt-0 pb-3">
-                          <span className="inline-flex items-center gap-2">
-                            <Check className="h-4 w-4 text-green-600" />
-                            <span className="font-medium">{count} steps completed</span>
-                          </span>
-                        </AccordionTrigger>
-                        <AccordionContent>
-                          <div className="rounded-xl border bg-card p-3">
-                            <div className="mb-1 text-xs font-semibold">Plan <span className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium border text-green-700 border-green-300 bg-green-50">completed</span></div>
-                            <ol className="space-y-1">
-                              {steps.map((s, i) => (
-                                <li key={`${s.title ?? "step"}-${i}`} className="flex items-start gap-2">
-                                  <span className="mt-0.5 inline-flex h-4 w-4 items-center justify-center">
-                                    <Check className="h-4 w-4 text-green-600" />
-                                  </span>
-                                  <div className="flex-1 text-xs">
-                                    <div className="leading-5 text-green-700">{s.title ?? `Step ${i + 1}`}</div>
-                                  </div>
-                                </li>
-                              ))}
-                            </ol>
-                          </div>
-                        </AccordionContent>
-                      </AccordionItem>
-                    </Accordion>
-                  </div>
-                );
-              }
-              return (
-                <div className="p-4 py-3 border-b">
-                  <div className="rounded-xl border bg-card p-3">
-                    <div className="mb-1 text-xs font-semibold">Plan <span className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium border text-blue-700 border-blue-300 bg-blue-50">in_progress</span></div>
-                    <ol className="space-y-1">
-                      {steps.map((s, i) => {
-                        const st = String(s?.status ?? "pending").toLowerCase();
-                        const isActive = typeof currentStepIndexMemo === "number" && currentStepIndexMemo === i && st === "in_progress";
-                        const isDone = st === "completed";
-                        const isFailed = st === "failed";
-                        return (
-                          <li key={`${s.title ?? "step"}-${i}`} className="flex items-start gap-2">
-                            <span className="mt-0.5 inline-flex h-4 w-4 items-center justify-center">
-                              {isDone ? (
-                                <Check className="h-4 w-4 text-green-600" />
-                              ) : isActive ? (
-                                <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-                              ) : isFailed ? (
-                                <X className="h-4 w-4 text-red-600" />
-                              ) : (
-                                <span className="block h-2 w-2 rounded-full bg-gray-300" />
-                              )}
-                            </span>
-                            <div className="flex-1 text-xs">
-                              <div className={cn("leading-5", isDone && "text-green-700", isActive && "text-blue-700", isFailed && "text-red-700")}>{s.title ?? `Step ${i + 1}`}</div>
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ol>
-                  </div>
-                </div>
-              );
-            })()}
             {/* Chat Content - conditionally rendered to avoid duplicate rendering */}
             {isDesktop && (
               <CopilotChat

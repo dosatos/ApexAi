@@ -6,9 +6,6 @@ export const initialState: AgentState = {
   globalDescription: "",
   lastAction: "",
   itemsCreated: 0,
-  planSteps: [],
-  currentStepIndex: -1,
-  planStatus: "",
 };
 
 export function isNonEmptyAgentState(value: unknown): value is AgentState {
