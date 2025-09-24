@@ -1,9 +1,49 @@
 from typing import Annotated, List, Optional, Dict, Any
+import os
+from dotenv import load_dotenv
 
 from llama_index.core.workflow import Context
 from llama_index.llms.openai import OpenAI
 from llama_index.protocols.ag_ui.events import StateSnapshotWorkflowEvent
 from llama_index.protocols.ag_ui.router import get_ag_ui_workflow_router
+
+# Load environment variables early to support local development via .env
+load_dotenv()
+
+
+def _load_composio_tools() -> List[Any]:
+    """Dynamically load Composio tools for LlamaIndex if configured.
+
+    Reads the following environment variables:
+    - COMPOSIO_TOOL_IDS: comma-separated list of tool identifiers to enable
+    - COMPOSIO_USER_ID: user/entity id to scope tools (defaults to "default")
+    - COMPOSIO_API_KEY: required by Composio client; read implicitly by SDK
+
+    Returns an empty list if not configured or if dependencies are missing.
+    """
+    tool_ids_str = os.getenv("COMPOSIO_TOOL_IDS", "").strip()
+    if not tool_ids_str:
+        return []
+
+    # Import lazily to avoid hard runtime dependency if not used
+    try:
+        from composio import Composio  # type: ignore
+        from composio_llamaindex import LlamaIndexProvider  # type: ignore
+    except Exception:
+        return []
+
+    user_id = os.getenv("COMPOSIO_USER_ID", "default")
+    tool_ids = [t.strip() for t in tool_ids_str.split(",") if t.strip()]
+    if not tool_ids:
+        return []
+    try:
+        composio = Composio(provider=LlamaIndexProvider())
+        tools = composio.tools.get(user_id=user_id, tools=tool_ids)
+        # "tools" should be a list of LlamaIndex-compatible Tool objects
+        return list(tools) if tools is not None else []
+    except Exception:
+        # Fail closed; backend tools remain empty if configuration is invalid
+        return []
 
 
 # --- Backend tools (server-side) ---
@@ -166,6 +206,8 @@ SYSTEM_PROMPT = (
     "3) If a command doesn't specify which item to change, ask to clarify.\n"
 )
 
+_backend_tools = _load_composio_tools()
+
 agentic_chat_router = get_ag_ui_workflow_router(
     llm=OpenAI(model="gpt-4.1"),
     # Provide frontend tool stubs so the model knows their names/signatures.
@@ -196,7 +238,7 @@ agentic_chat_router = get_ag_ui_workflow_router(
         clearChartField1Value,
         removeChartField1,
     ],
-    backend_tools=[],
+    backend_tools=_backend_tools,
     system_prompt=SYSTEM_PROMPT,
     initial_state={
         # Shared state synchronized with the frontend canvas
