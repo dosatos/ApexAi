@@ -74,6 +74,7 @@ def get_sheet_data(sheet_id: str, sheet_name: Optional[str] = None) -> Optional[
             
         sheet_info = result.get("data", {}).get("response_data", {})
         print(f"Got sheet info: {sheet_info.get('properties', {}).get('title', 'Unknown')}")
+        print(f"Sheet info keys: {list(sheet_info.keys())}")  # Debug what fields are available
         
         # Get available sheets
         sheets = sheet_info.get("sheets", [])
@@ -130,12 +131,13 @@ def get_sheet_data(sheet_id: str, sheet_name: Optional[str] = None) -> Optional[
         print(f"Error fetching sheet data: {e}")
         return None
 
-def convert_sheet_to_canvas_items(sheet_data: Dict[str, Any]) -> Dict[str, Any]:
+def convert_sheet_to_canvas_items(sheet_data: Dict[str, Any], original_sheet_id: str = "") -> Dict[str, Any]:
     """
     Convert sheet data to canvas format.
     
     Args:
         sheet_data: Data returned from get_sheet_data()
+        original_sheet_id: The original sheet ID passed to get_sheet_data()
         
     Returns:
         Dictionary with canvas state structure
@@ -237,7 +239,7 @@ def convert_sheet_to_canvas_items(sheet_data: Dict[str, Any]) -> Dict[str, Any]:
         "items": items,
         "globalTitle": sheet_data.get("title", "Imported Sheet"),
         "globalDescription": f"Imported from Google Sheets • {len(items)} items",
-        "syncSheetId": sheet_data.get("spreadsheet_info", {}).get("spreadsheetId", ""),
+        "syncSheetId": original_sheet_id or sheet_data.get("spreadsheet_info", {}).get("spreadsheet_id", ""),
         "syncSheetName": sheet_data.get("sheet_name", ""),  # Store the sheet name used
     }
 
@@ -440,7 +442,7 @@ def parse_numeric_value(value: str) -> Optional[float]:
 
 def sync_canvas_to_sheet(sheet_id: str, canvas_state: Dict[str, Any], sheet_name: Optional[str] = None) -> Dict[str, Any]:
     """
-    Sync canvas state to Google Sheets using GOOGLESHEETS_BATCH_UPDATE.
+    Sync canvas state to Google Sheets with proper deletion of removed items.
     
     Args:
         sheet_id: Google Sheets ID
@@ -468,12 +470,15 @@ def sync_canvas_to_sheet(sheet_id: str, canvas_state: Dict[str, Any], sheet_name
         
         print(f"Syncing to sheet: {target_sheet_name}")
         
-        # Prepare sheet data in structured format
-        # Header row
-        headers = ["id", "type", "name", "subtitle", "data"]
+        # First, get current sheet data to determine how many rows need to be deleted
+        current_sheet_data = get_sheet_data(sheet_id, target_sheet_name)
+        current_row_count = 0
+        if current_sheet_data and current_sheet_data.get("rows"):
+            current_row_count = len(current_sheet_data["rows"])
         
-        # Data rows - one per canvas item
-        rows = [headers]  # Start with headers
+        # Prepare new sheet data
+        headers = ["id", "type", "name", "subtitle", "data"]
+        new_rows = [headers]  # Start with headers
         
         for item in items:
             item_data_json = json.dumps(item.get("data", {}))
@@ -484,17 +489,61 @@ def sync_canvas_to_sheet(sheet_id: str, canvas_state: Dict[str, Any], sheet_name
                 str(item.get("subtitle", "")),
                 item_data_json
             ]
-            rows.append(row)
+            new_rows.append(row)
         
-        # Use GOOGLESHEETS_BATCH_UPDATE to overwrite the sheet
+        new_row_count = len(new_rows)  # Including header
+        
+        # Step 1: Delete extra rows if the new data has fewer rows than current
+        if current_row_count > new_row_count:
+            rows_to_delete = current_row_count - new_row_count
+            print(f"Deleting {rows_to_delete} rows from sheet (current: {current_row_count}, new: {new_row_count})")
+            
+            # Get the sheet's internal ID for deletion
+            sheet_info_result = composio.tools.execute(
+                user_id=user_id,
+                slug="GOOGLESHEETS_GET_SPREADSHEET_INFO",
+                arguments={"spreadsheet_id": sheet_id}
+            )
+            
+            internal_sheet_id = 0  # Default fallback
+            if sheet_info_result and sheet_info_result.get("successful"):
+                sheets = sheet_info_result.get("data", {}).get("response_data", {}).get("sheets", [])
+                for sheet in sheets:
+                    if sheet.get("properties", {}).get("title") == target_sheet_name:
+                        internal_sheet_id = sheet.get("properties", {}).get("sheetId", 0)
+                        break
+            
+            print(f"Using internal sheet ID: {internal_sheet_id} for deletion")
+            
+            delete_result = composio.tools.execute(
+                user_id=user_id,
+                slug="GOOGLESHEETS_DELETE_DIMENSION",
+                arguments={
+                    "spreadsheet_id": sheet_id,
+                    "delete_dimension_request": {
+                        "range": {
+                            "dimension": "ROWS",
+                            "end_index": current_row_count,
+                            "sheet_id": internal_sheet_id,
+                            "start_index": new_row_count
+                        }
+                    }
+                }
+            )
+            
+            if not delete_result or not delete_result.get("successful"):
+                print(f"Warning: Failed to delete rows: {delete_result}")
+                # Continue anyway - the batch update might still work
+        
+        # Step 2: Update the sheet with new data
         result = composio.tools.execute(
             user_id=user_id,
             slug="GOOGLESHEETS_BATCH_UPDATE",
             arguments={
                 "spreadsheet_id": sheet_id,
                 "sheet_name": target_sheet_name,
-                "first_cell_location": "A1",  # Start from A1 to overwrite everything
-                "values": rows,
+                "first_cell_location": "A1",
+                "values": new_rows,
                 "valueInputOption": "USER_ENTERED"
             }
         )
@@ -502,9 +551,10 @@ def sync_canvas_to_sheet(sheet_id: str, canvas_state: Dict[str, Any], sheet_name
         if result and result.get("successful"):
             return {
                 "success": True,
-                "message": f"Synced {len(items)} items to Google Sheets",
+                "message": f"Synced {len(items)} items to Google Sheets (deleted {max(0, current_row_count - new_row_count)} rows)",
                 "items_synced": len(items),
-                "sheet_id": sheet_id
+                "sheet_id": sheet_id,
+                "rows_deleted": max(0, current_row_count - new_row_count)
             }
         else:
             error_msg = result.get("error", "Unknown error") if result else "No response"
@@ -536,17 +586,21 @@ def create_new_sheet(title: str = "Canvas Data") -> Dict[str, Any]:
     try:
         result = composio.tools.execute(
             user_id=user_id,
-            slug="GOOGLESHEETS_CREATE_SPREADSHEET",
+            slug="GOOGLESHEETS_CREATE_GOOGLE_SHEET1",
             arguments={
-                "title": title,
-                "sheet_names": ["Sheet1"]
+                "title": title
             }
         )
         
+        print(f"Composio API result for sheet creation: {result}")
+        
         if result and result.get("successful"):
             sheet_data = result.get("data", {}).get("response_data", {})
-            sheet_id = sheet_data.get("spreadsheetId", "")
-            sheet_url = sheet_data.get("spreadsheetUrl", "")
+            sheet_id = sheet_data.get("spreadsheet_id", "")  # Changed from "spreadsheetId"
+            # Construct the sheet URL from the ID since it's not provided directly
+            sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit" if sheet_id else ""
+            
+            print(f"Successfully extracted sheet_id: {sheet_id}, sheet_url: {sheet_url}")
             
             return {
                 "success": True,
@@ -556,6 +610,7 @@ def create_new_sheet(title: str = "Canvas Data") -> Dict[str, Any]:
             }
         else:
             error_msg = result.get("error", "Unknown error") if result else "No response"
+            print(f"Sheet creation failed with result: {result}")
             return {
                 "success": False,
                 "error": f"Failed to create sheet: {error_msg}"
@@ -575,7 +630,7 @@ if __name__ == "__main__":
         data = get_sheet_data(test_sheet_id)
         if data:
             print(f"Found {len(data.get('rows', []))} rows")
-            canvas_data = convert_sheet_to_canvas_items(data)
+            canvas_data = convert_sheet_to_canvas_items(data, test_sheet_id)
             print(f"Converted to {len(canvas_data['items'])} canvas items")
             print(json.dumps(canvas_data, indent=2))
         else:

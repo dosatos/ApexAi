@@ -66,82 +66,6 @@ def list_sheet_names(sheet_id: Annotated[str, "Google Sheets ID to list availabl
     except Exception as e:
         return f"Error listing sheets from {sheet_id}: {str(e)}"
 
-def convert_sheet_to_canvas_items(
-    sheet_id: Annotated[str, "Google Sheets ID to import and convert to canvas items."],
-    sheet_name: Annotated[Optional[str], "Optional specific sheet name to import from. If not provided, uses first sheet."] = None
-) -> str:
-    """Convert Google Sheets data to canvas items using Composio."""
-    try:
-        from .sheets_integration import get_sheet_data, convert_sheet_to_canvas_items as sheet_to_canvas_converter
-        import json
-        
-        # Fetch sheet data using Composio
-        sheet_data = get_sheet_data(sheet_id, sheet_name)
-        if not sheet_data:
-            return f"Failed to fetch data from sheet ID: {sheet_id}. Please check the ID and ensure the sheet is accessible."
-        
-        # Convert to canvas format
-        canvas_data = sheet_to_canvas_converter(sheet_data)
-        
-        if not canvas_data or not canvas_data.get("items"):
-            return f"No items found in sheet {sheet_id} or failed to convert data."
-        
-        # Return structured data for agent to process
-        items_count = len(canvas_data["items"])
-        sheet_title = canvas_data.get("globalTitle", "Unknown Sheet")
-        
-        # Create instructions for the agent to create each item AND set syncSheetId
-        instructions = [f"✅ Converted {items_count} items from '{sheet_title}'. Now creating them in the canvas:\n"]
-        
-        # First, set the global title and description if available
-        if canvas_data.get("globalTitle"):
-            instructions.append(f"0. Call setGlobalTitle(title='{canvas_data['globalTitle']}')")
-        if canvas_data.get("globalDescription"):
-            instructions.append(f"1. Call setGlobalDescription(description='{canvas_data['globalDescription']}')")
-        
-        # Set the syncSheetId so auto-sync will work for future changes
-        instructions.append(f"2. Call setSyncSheetId(sheetId='{sheet_id}') to enable automatic bidirectional sync with Google Sheets")
-        
-        for i, item in enumerate(canvas_data["items"], 1):
-            item_type = item.get("type", "note")
-            item_name = item.get("name", f"Item {i}")
-            item_subtitle = item.get("subtitle", "")
-            item_data = item.get("data", {})
-            
-            instructions.append(f"{i}. Creating {item_type} '{item_name}'")
-            
-            # Create the item using frontend action
-            instructions.append(f"   - Call createItem(type='{item_type}', name='{item_name}')")
-            
-            # Set subtitle if present
-            if item_subtitle:
-                instructions.append(f"   - Call setItemSubtitleOrDescription(subtitle='{item_subtitle}', itemId='[created_id]')")
-            
-            # Set data fields based on type
-            if item_type == "project" and item_data:
-                if item_data.get("field1"): 
-                    instructions.append(f"   - Call setProjectField1(value='{item_data['field1']}', itemId='[created_id]')")
-                if item_data.get("field2"): 
-                    instructions.append(f"   - Call setProjectField2(value='{item_data['field2']}', itemId='[created_id]')")
-                if item_data.get("field3"): 
-                    instructions.append(f"   - Call setProjectField3(date='{item_data['field3']}', itemId='[created_id]')")
-            
-            elif item_type == "entity" and item_data:
-                if item_data.get("field1"): 
-                    instructions.append(f"   - Call setEntityField1(value='{item_data['field1']}', itemId='[created_id]')")
-                if item_data.get("field2"): 
-                    instructions.append(f"   - Call setEntityField2(value='{item_data['field2']}', itemId='[created_id]')")
-                for tag in item_data.get("field3", []):
-                    instructions.append(f"   - Call addEntityField3(tag='{tag}', itemId='[created_id]')")
-            
-            elif item_type == "note" and item_data:
-                if item_data.get("field1"): 
-                    instructions.append(f"   - Call setNoteField1(value='{item_data['field1']}', itemId='[created_id]')")
-        
-        return "\n".join(instructions) + "\n\nNote: Replace '[created_id]' with the actual ID returned from createItem calls."
-        
-    except Exception as e:
-        return f"Error converting sheet {sheet_id}: {str(e)}"
 
 
 # --- Frontend tool stubs (names/signatures only; execution happens in the UI) ---
@@ -353,15 +277,9 @@ _sheet_list_tool = FunctionTool.from_defaults(
     description="List all available sheet names in a Google Spreadsheet."
 )
 
-_sheet_conversion_tool = FunctionTool.from_defaults(
-    fn=convert_sheet_to_canvas_items,
-    name="convert_sheet_to_canvas_items",
-    description="Convert Google Sheets data to canvas items. Takes a sheet ID and optional sheet name, returns information about the converted items."
-)
 
 _backend_tools = _load_composio_tools()
 _backend_tools.append(_sheet_list_tool)
-_backend_tools.append(_sheet_conversion_tool)
 print(f"Backend tools loaded: {len(_backend_tools)} tools")
 
 agentic_chat_router = get_ag_ui_workflow_router(
