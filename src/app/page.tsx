@@ -24,6 +24,7 @@ export default function CopilotKitPage() {
     name: "sample_agent",
     initialState,
   });
+  
 
   // Global cache for the last non-empty agent state
   const cachedStateRef = useRef<AgentState>(state ?? initialState);
@@ -59,6 +60,43 @@ export default function CopilotKitPage() {
 
   useEffect(() => {
     console.log("[CoAgent state updated]", state);
+    
+    // Auto-sync to Google Sheets if syncSheetId is present
+    const autoSyncToSheets = async () => {
+      if (!state || !state.syncSheetId || !state.items || state.items.length === 0) {
+        return; // No sync needed
+      }
+      
+      try {
+        console.log(`[AUTO-SYNC] Syncing ${state.items.length} items to sheet: ${state.syncSheetId}`);
+        
+        const response = await fetch('/api/sheets/sync', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            canvas_state: state,
+            sheet_id: state.syncSheetId,
+            sheet_name: state.syncSheetName,
+          }),
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log('[AUTO-SYNC] ✅ Successfully synced to Google Sheets:', result.message);
+        } else {
+          const error = await response.json();
+          console.warn('[AUTO-SYNC] ❌ Failed to sync to Google Sheets:', error.error);
+        }
+      } catch (error) {
+        console.warn('[AUTO-SYNC] ❌ Exception during auto-sync:', error);
+      }
+    };
+
+    // Debounce the sync to avoid too many requests
+    const timeoutId = setTimeout(autoSyncToSheets, 1000);
+    return () => clearTimeout(timeoutId);
   }, [state]);
 
   // Reset JSON view when there are no items
@@ -854,6 +892,226 @@ export default function CopilotKitPage() {
     },
   });
 
+  // Google Sheets Integration Actions
+  const [showSheetModal, setShowSheetModal] = useState<boolean>(false);
+  const [isImporting, setIsImporting] = useState<boolean>(false);
+  const [importError, setImportError] = useState<string>("");
+  const [availableSheets, setAvailableSheets] = useState<string[]>([]);
+  const [selectedSheetName, setSelectedSheetName] = useState<string>("");
+
+  const fetchAvailableSheets = async (sheetId: string) => {
+    try {
+      // Extract sheet ID from URL if needed
+      let cleanSheetId = sheetId.trim();
+      if (cleanSheetId.includes("/spreadsheets/d/")) {
+        const start = cleanSheetId.indexOf("/spreadsheets/d/") + "/spreadsheets/d/".length;
+        const end = cleanSheetId.indexOf("/", start);
+        cleanSheetId = cleanSheetId.substring(start, end === -1 ? undefined : end);
+      }
+
+      setImportError("");
+      
+      // Make API call to list available sheets
+      const response = await fetch('/api/sheets/list', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ sheet_id: cleanSheetId }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const sheetNames = result.sheet_names || [];
+        setAvailableSheets(sheetNames);
+        if (sheetNames.length > 0) {
+          setSelectedSheetName(""); // Default to first sheet
+        }
+      } else {
+        const error = await response.json();
+        setImportError(`Failed to list sheets: ${error.error}`);
+      }
+      
+    } catch (error) {
+      console.error('Error fetching sheets:', error);
+      setImportError("Failed to fetch available sheets");
+    }
+  };
+
+  const importFromSheet = async (sheetId: string, sheetName?: string) => {
+    if (!sheetId.trim()) {
+      setImportError("Please enter a valid Sheet ID");
+      return;
+    }
+
+    setIsImporting(true);
+    setImportError("");
+
+    try {
+      // Extract sheet ID from URL if needed
+      let cleanSheetId = sheetId.trim();
+      if (cleanSheetId.includes("/spreadsheets/d/")) {
+        const start = cleanSheetId.indexOf("/spreadsheets/d/") + "/spreadsheets/d/".length;
+        const end = cleanSheetId.indexOf("/", start);
+        cleanSheetId = cleanSheetId.substring(start, end === -1 ? undefined : end);
+      }
+
+      // Make direct API call to backend for importing
+      const response = await fetch('/api/sheets/import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          sheet_id: cleanSheetId,
+          sheet_name: sheetName || selectedSheetName || undefined
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.details || errorData.error || 'Failed to import sheet');
+      }
+
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        // Update the canvas state with imported data
+        setState(result.data);
+        setShowSheetModal(false);
+        setImportError("");
+        console.log("Successfully imported sheet data:", result.message);
+      } else {
+        throw new Error(result.message || 'Failed to process sheet data');
+      }
+      
+    } catch (error) {
+      console.error('Import error:', error);
+      setImportError(error instanceof Error ? error.message : 'Failed to import sheet');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  useCopilotAction({
+    name: "openSheetSelectionModal",
+    description: "Open modal for selecting Google Sheets.",
+    available: "remote",
+    parameters: [],
+    handler: () => {
+      setShowSheetModal(true);
+      return "sheet_modal_opened";
+    },
+  });
+
+  useCopilotAction({
+    name: "setSyncSheetId",
+    description: "Set the Google Sheet ID for auto-sync.",
+    available: "remote",
+    parameters: [
+      { name: "sheetId", type: "string", required: true, description: "The Google Sheet ID to sync with." },
+    ],
+    handler: ({ sheetId }: { sheetId: string }) => {
+      setState((prev) => ({ 
+        ...initialState, 
+        ...prev, 
+        syncSheetId: sheetId 
+      }));
+      return `sync_sheet_set:${sheetId}`;
+    },
+  });
+
+  useCopilotAction({
+    name: "searchUserSheets",
+    description: "Search user's Google Sheets and display them for selection.",
+    available: "remote",
+    parameters: [],
+    handler: () => {
+      // This will be handled by the agent using GOOGLESHEETS_SEARCH_SPREADSHEETS
+      return "searching_sheets";
+    },
+  });
+
+  useCopilotAction({
+    name: "syncCanvasToSheets",
+    description: "Manually sync current canvas state to Google Sheets.",
+    available: "remote",
+    parameters: [],
+    handler: async () => {
+      if (!viewState.syncSheetId) {
+        return "No sync sheet ID configured. Please set a sheet ID first.";
+      }
+      
+      if (!viewState.items || viewState.items.length === 0) {
+        return "No items to sync. Canvas is empty.";
+      }
+
+      try {
+        console.log(`[MANUAL-SYNC] Syncing ${viewState.items.length} items to sheet: ${viewState.syncSheetId}`);
+        
+        const response = await fetch('/api/sheets/sync', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            canvas_state: viewState,
+            sheet_id: viewState.syncSheetId,
+          }),
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          return `✅ Successfully synced ${viewState.items.length} items to Google Sheets: ${result.message}`;
+        } else {
+          const error = await response.json();
+          return `❌ Failed to sync to Google Sheets: ${error.error}`;
+        }
+      } catch (error) {
+        return `❌ Exception during manual sync: ${error}`;
+      }
+    },
+  });
+
+  useCopilotAction({
+    name: "forceCanvasToSheetsSync",
+    description: "Force sync current canvas state to a specific Google Sheet, even if syncSheetId is not set.",
+    available: "remote",
+    parameters: [
+      { name: "sheetId", type: "string", required: true, description: "Google Sheet ID to sync to." },
+    ],
+    handler: async ({ sheetId }: { sheetId: string }) => {
+      if (!viewState.items || viewState.items.length === 0) {
+        return "No items to sync. Canvas is empty.";
+      }
+
+      try {
+        console.log(`[FORCE-SYNC] Syncing ${viewState.items.length} items to sheet: ${sheetId}`);
+        
+        const response = await fetch('/api/sheets/sync', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            canvas_state: viewState,
+            sheet_id: sheetId,
+          }),
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          return `✅ Successfully force-synced ${viewState.items.length} items to Google Sheets: ${result.message}`;
+        } else {
+          const error = await response.json();
+          return `❌ Failed to force-sync to Google Sheets: ${error.error}`;
+        }
+      } catch (error) {
+        return `❌ Exception during force-sync: ${error}`;
+      }
+    },
+  });
+
   const titleClasses = cn(
     /* base styles */
     "w-full outline-none rounded-md px-2 py-1",
@@ -1012,8 +1270,20 @@ export default function CopilotKitPage() {
                 type="button"
                 variant="outline"
                 className={cn(
-                  "gap-1.25 text-base font-semibold rounded-l-none",
+                  "gap-1.25 text-base font-semibold rounded-none border-r-0",
                   "peer-hover:border-l-accent!",
+                )}
+                onClick={() => {
+                  setShowSheetModal(true);
+                }}
+              >
+                📊 Sheets
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className={cn(
+                  "gap-1.25 text-base font-semibold rounded-l-none",
                 )}
                 onClick={() => setShowJsonView((v) => !v)}
               >
@@ -1057,6 +1327,127 @@ export default function CopilotKitPage() {
           />
         )}
       </div>
+
+      {/* Google Sheets Selection Modal */}
+      {showSheetModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold">Import from Google Sheets</h2>
+              <button
+                onClick={() => {
+                  setShowSheetModal(false);
+                  setImportError("");
+                  setAvailableSheets([]);
+                  setSelectedSheetName("");
+                }}
+                className="text-gray-500 hover:text-gray-700"
+                disabled={isImporting}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">
+                Enter a Google Sheets ID or URL to import data directly into your canvas. Each row will become a card with intelligent type detection.
+              </p>
+              
+              {importError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                  <p className="text-sm text-red-600">{importError}</p>
+                </div>
+              )}
+              
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  placeholder="Sheet ID or https://docs.google.com/spreadsheets/d/..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  id="sheet-id-input"
+                  disabled={isImporting}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const input = e.target as HTMLInputElement;
+                      importFromSheet(input.value);
+                    }
+                  }}
+                />
+                
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={() => {
+                      const input = document.getElementById('sheet-id-input') as HTMLInputElement;
+                      if (input?.value) {
+                        fetchAvailableSheets(input.value);
+                      }
+                    }}
+                    variant="outline"
+                    className="flex-1"
+                    disabled={isImporting}
+                  >
+                    List Sheets
+                  </Button>
+                </div>
+                
+                {availableSheets.length > 0 && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700">
+                      Select Sheet (optional - defaults to first sheet):
+                    </label>
+                    <select
+                      value={selectedSheetName}
+                      onChange={(e) => setSelectedSheetName(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      disabled={isImporting}
+                    >
+                      <option value="">-- Default (First Sheet) --</option>
+                      {availableSheets.map((sheetName, index) => (
+                        <option key={index} value={sheetName}>
+                          {sheetName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={() => {
+                      const input = document.getElementById('sheet-id-input') as HTMLInputElement;
+                      if (input) {
+                        importFromSheet(input.value);
+                      }
+                    }}
+                    className="flex-1"
+                    disabled={isImporting}
+                  >
+                    {isImporting ? "Importing..." : "Import Sheet"}
+                  </Button>
+                  <Button 
+                    variant="outline"
+                    onClick={() => {
+                      setShowSheetModal(false);
+                      setImportError("");
+                      setAvailableSheets([]);
+                      setSelectedSheetName("");
+                    }}
+                    className="flex-1"
+                    disabled={isImporting}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+              
+              <div className="text-xs text-gray-500 space-y-1">
+                <p>💡 <strong>Tip:</strong> Make sure your sheet is publicly accessible or you're signed in to Composio with the right Google account.</p>
+                <p>🤖 The system will analyze your data and create the best card types (projects, entities, notes, or charts).</p>
+                <p>⚡ Clicking "Import Sheet" will directly import the data to your canvas.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
