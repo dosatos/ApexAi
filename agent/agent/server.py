@@ -28,7 +28,7 @@ def _load_env_files() -> None:
 _load_env_files()
 
 from .agent import agentic_chat_router
-from .sheets_integration import get_sheet_data, convert_sheet_to_canvas_items, sync_canvas_to_sheet, get_sheet_names
+from .sheets_integration import get_sheet_data, convert_sheet_to_canvas_items, sync_canvas_to_sheet, get_sheet_names, create_new_sheet
 
 app = FastAPI()
 app.include_router(agentic_chat_router)
@@ -42,6 +42,9 @@ class CanvasToSheetSyncRequest(BaseModel):
     canvas_state: dict
     sheet_id: str
     sheet_name: Optional[str] = None
+
+class CreateSheetRequest(BaseModel):
+    title: str
 
 # Sheets sync endpoint
 @app.post("/sheets/sync")
@@ -83,7 +86,7 @@ async def sync_sheets(request: SheetSyncRequest):
             )
         
         # Convert to canvas items
-        canvas_data = convert_sheet_to_canvas_items(sheet_data)
+        canvas_data = convert_sheet_to_canvas_items(sheet_data, sheet_id)
         
         return JSONResponse(content={
             "success": True,
@@ -171,6 +174,45 @@ async def list_sheet_names(request: SheetSyncRequest):
         raise
     except Exception as e:
         print(f"Error in sheet listing: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+@app.post("/sheets/create")
+async def create_sheet(request: CreateSheetRequest):
+    """
+    Create a new Google Sheet.
+    
+    Args:
+        request: Contains title for the new sheet
+        
+    Returns:
+        New sheet details including sheet_id and URL
+    """
+    try:
+        print(f"Creating new sheet with title: {request.title}")
+        
+        # Create new sheet using Composio
+        result = create_new_sheet(request.title)
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=400, 
+                detail=result.get("error", "Failed to create new sheet")
+            )
+        
+        return JSONResponse(content={
+            "success": True,
+            "sheet_id": result.get("sheet_id"),
+            "sheet_url": result.get("sheet_url"),
+            "title": result.get("title"),
+            "message": f"Successfully created new sheet '{request.title}'"
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error creating sheet: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Internal server error: {str(e)}"

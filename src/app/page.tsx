@@ -63,12 +63,19 @@ export default function CopilotKitPage() {
     
     // Auto-sync to Google Sheets if syncSheetId is present
     const autoSyncToSheets = async () => {
-      if (!state || !state.syncSheetId || !state.items || state.items.length === 0) {
-        return; // No sync needed
+      console.log("[AUTO-SYNC] Checking sync conditions:", {
+        hasState: !!state,
+        syncSheetId: state?.syncSheetId,
+        itemsLength: state?.items?.length || 0
+      });
+      
+      if (!state || !state.syncSheetId) {
+        console.log("[AUTO-SYNC] Skipping - no sheet configured");
+        return; // No sync needed - no sheet configured
       }
       
       try {
-        console.log(`[AUTO-SYNC] Syncing ${state.items.length} items to sheet: ${state.syncSheetId}`);
+        console.log(`[AUTO-SYNC] Syncing ${state.items?.length || 0} items to sheet: ${state.syncSheetId}`);
         
         const response = await fetch('/api/sheets/sync', {
           method: 'POST',
@@ -898,6 +905,15 @@ export default function CopilotKitPage() {
   const [importError, setImportError] = useState<string>("");
   const [availableSheets, setAvailableSheets] = useState<string[]>([]);
   const [selectedSheetName, setSelectedSheetName] = useState<string>("");
+  const [isCreatingSheet, setIsCreatingSheet] = useState<boolean>(false);
+  const [newSheetTitle, setNewSheetTitle] = useState<string>("");
+  const [showFormatWarning, setShowFormatWarning] = useState<boolean>(false);
+  const [formatWarningDetails, setFormatWarningDetails] = useState<{
+    sheetId: string;
+    sheetName?: string;
+    existingFormat: string;
+    canvasFormat: string;
+  } | null>(null);
 
   const fetchAvailableSheets = async (sheetId: string) => {
     try {
@@ -938,7 +954,7 @@ export default function CopilotKitPage() {
     }
   };
 
-  const importFromSheet = async (sheetId: string, sheetName?: string) => {
+  const importFromSheet = async (sheetId: string, sheetName?: string, forceImport = false) => {
     if (!sheetId.trim()) {
       setImportError("Please enter a valid Sheet ID");
       return;
@@ -954,6 +970,51 @@ export default function CopilotKitPage() {
         const start = cleanSheetId.indexOf("/spreadsheets/d/") + "/spreadsheets/d/".length;
         const end = cleanSheetId.indexOf("/", start);
         cleanSheetId = cleanSheetId.substring(start, end === -1 ? undefined : end);
+      }
+
+      // Check for format compatibility if we have existing canvas data and not forcing import
+      if (!forceImport && viewState.items && viewState.items.length > 0) {
+        // Get a preview of what the sheet contains
+        try {
+          const previewResponse = await fetch('/api/sheets/import', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+              sheet_id: cleanSheetId,
+              sheet_name: sheetName || selectedSheetName || undefined,
+              preview_only: true
+            }),
+          });
+
+          if (previewResponse.ok) {
+            const previewResult = await previewResponse.json();
+            
+            // Check if the sheet has a different format than canvas
+            const hasCanvasFormat = viewState.items.some(item => 
+              item.type && ['project', 'entity', 'note', 'chart'].includes(item.type)
+            );
+            
+            const sheetHasData = previewResult.data && previewResult.data.items && previewResult.data.items.length > 0;
+            
+            if (hasCanvasFormat && sheetHasData) {
+              // Show format warning
+              setFormatWarningDetails({
+                sheetId: cleanSheetId,
+                sheetName: sheetName || selectedSheetName || undefined,
+                existingFormat: `${previewResult.data.items.length} items detected in sheet`,
+                canvasFormat: `${viewState.items.length} items currently in canvas`
+              });
+              setShowFormatWarning(true);
+              setIsImporting(false);
+              return;
+            }
+          }
+        } catch (previewError) {
+          console.warn("Could not preview sheet format:", previewError);
+          // Continue with normal import if preview fails
+        }
       }
 
       // Make direct API call to backend for importing
@@ -977,6 +1038,7 @@ export default function CopilotKitPage() {
       
       if (result.success && result.data) {
         // Update the canvas state with imported data
+        console.log("Import result data:", result.data);
         setState(result.data);
         setShowSheetModal(false);
         setImportError("");
@@ -990,6 +1052,135 @@ export default function CopilotKitPage() {
       setImportError(error instanceof Error ? error.message : 'Failed to import sheet');
     } finally {
       setIsImporting(false);
+    }
+  };
+
+  const createNewSheet = async (title: string) => {
+    if (!title.trim()) {
+      setImportError("Please enter a valid sheet title");
+      return;
+    }
+
+    setIsCreatingSheet(true);
+    setImportError("");
+
+    try {
+      const response = await fetch('/api/sheets/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title: title.trim() }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.details || errorData.error || 'Failed to create sheet');
+      }
+
+      const result = await response.json();
+      console.log("Create sheet result:", result);
+      
+      if (result.success) {
+        const sheetId = result.sheet_id;
+        const sheetUrl = result.sheet_url;
+        
+        if (!sheetId) {
+          console.warn("Sheet creation succeeded but no sheet_id returned");
+          setImportError("Sheet was created but ID not returned. Check your Google Drive.");
+          return;
+        }
+        
+        // If we have existing items, sync them to the new sheet first, then set up for bi-directional sync
+        if (viewState.items && viewState.items.length > 0) {
+          try {
+            const syncResponse = await fetch('/api/sheets/sync', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                canvas_state: viewState,
+                sheet_id: sheetId,
+              }),
+            });
+
+            if (syncResponse.ok) {
+              console.log("Successfully synced existing items to new sheet");
+              // Set the newly created sheet as the sync target and update title/description
+              setState((prev) => ({ 
+                ...prev,
+                globalTitle: result.title || title.trim(),
+                globalDescription: `Connected to Google Sheet: ${result.title || title.trim()}`,
+                syncSheetId: sheetId,
+                syncSheetName: "Sheet1" 
+              }));
+            } else {
+              console.warn("Failed to sync existing items to new sheet");
+            }
+          } catch (syncError) {
+            console.warn("Failed to sync existing items to new sheet:", syncError);
+          }
+        } else {
+          // No existing items - import the empty sheet structure into canvas
+          try {
+            const importResponse = await fetch('/api/sheets/import', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ 
+                sheet_id: sheetId,
+                sheet_name: "Sheet1"
+              }),
+            });
+
+            if (importResponse.ok) {
+              const importResult = await importResponse.json();
+              if (importResult.success && importResult.data) {
+                // Update canvas state with the imported (likely empty) structure and set title/description
+                setState({
+                  ...importResult.data,
+                  globalTitle: result.title || title.trim(),
+                  globalDescription: `Connected to Google Sheet: ${result.title || title.trim()}`,
+                  syncSheetId: sheetId,
+                  syncSheetName: "Sheet1"
+                });
+                console.log("Successfully imported new sheet structure into canvas");
+              }
+            }
+          } catch (importError) {
+            console.warn("Failed to import new sheet structure:", importError);
+            // Fallback: just set sync info and update title/description
+            setState((prev) => ({ 
+              ...initialState,
+              ...prev,
+              globalTitle: result.title || title.trim(),
+              globalDescription: `Connected to Google Sheet: ${result.title || title.trim()}`,
+              syncSheetId: sheetId,
+              syncSheetName: "Sheet1"
+            }));
+          }
+        }
+        
+        setShowSheetModal(false);
+        setImportError("");
+        console.log("Successfully created new sheet:", result.message);
+        
+        // Show success message or provide link
+        if (sheetUrl) {
+          window.open(sheetUrl, '_blank');
+        }
+        
+      } else {
+        throw new Error('Failed to create sheet: ' + (result.error || result.message || 'Unknown error'));
+      }
+      
+    } catch (error) {
+      console.error('Create sheet error:', error);
+      setImportError(error instanceof Error ? error.message : 'Failed to create sheet');
+    } finally {
+      setIsCreatingSheet(false);
     }
   };
 
@@ -1335,23 +1526,61 @@ export default function CopilotKitPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold">Import from Google Sheets</h2>
+              <h2 className="text-lg font-semibold">Google Sheets Integration</h2>
               <button
                 onClick={() => {
                   setShowSheetModal(false);
                   setImportError("");
                   setAvailableSheets([]);
                   setSelectedSheetName("");
+                  setNewSheetTitle("");
                 }}
                 className="text-gray-500 hover:text-gray-700"
-                disabled={isImporting}
+                disabled={isImporting || isCreatingSheet}
               >
                 ✕
               </button>
             </div>
             <div className="space-y-4">
+              <div className="flex gap-2 mb-4">
+                <Button 
+                  onClick={() => {
+                    if (newSheetTitle.trim()) {
+                      createNewSheet(newSheetTitle);
+                    }
+                  }}
+                  className="flex-1"
+                  disabled={isImporting || isCreatingSheet || !newSheetTitle.trim()}
+                >
+                  {isCreatingSheet ? "Creating..." : "📄 Create New Sheet"}
+                </Button>
+              </div>
+              
+              <input
+                type="text"
+                placeholder="New sheet title (e.g., 'My Canvas Data')"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={newSheetTitle}
+                onChange={(e) => setNewSheetTitle(e.target.value)}
+                disabled={isImporting || isCreatingSheet}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newSheetTitle.trim()) {
+                    createNewSheet(newSheetTitle);
+                  }
+                }}
+              />
+              
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300" />
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="bg-white px-2 text-gray-500">or</span>
+                </div>
+              </div>
+              
               <p className="text-sm text-gray-600">
-                Enter a Google Sheets ID or URL to import data directly into your canvas. Each row will become a card with intelligent type detection.
+                Enter an existing Google Sheets ID or URL to import data directly into your canvas. Each row will become a card with intelligent type detection.
               </p>
               
               {importError && (
@@ -1366,9 +1595,7 @@ export default function CopilotKitPage() {
                   placeholder="Sheet ID or https://docs.google.com/spreadsheets/d/..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   id="sheet-id-input"
-                  disabled={isImporting}
-                  value={sheetId}
-                  onChange={e => setSheetId(e.target.value)}
+                  disabled={isImporting || isCreatingSheet}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       const input = e.target as HTMLInputElement;
@@ -1387,7 +1614,7 @@ export default function CopilotKitPage() {
                     }}
                     variant="outline"
                     className="flex-1"
-                    disabled={isImporting || !sheetId}
+                    disabled={isImporting || isCreatingSheet}
                   >
                     List Sheets
                   </Button>
@@ -1395,28 +1622,27 @@ export default function CopilotKitPage() {
                 
                 {(
                   <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700">
-                          Select Sheet (optional - defaults to first sheet):
-                      </label>
-                      <select
-                          value={selectedSheetName}
-                          onChange={(e) => setSelectedSheetName(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          disabled={isImporting}
-                      >
-                          {availableSheets.length === 0 ? (
-                              <option value="">-- Click "List Sheets" to populate options --</option>
-                          ) : (
-                              <>
-                                  <option value="">-- Default (First Sheet) --</option>
-                                  {availableSheets.map((sheetName, index) => (
-                                      <option key={index} value={sheetName}>
-                                          {sheetName}
-                                      </option>
-                                  ))}
-                              </>
-                          )}
-                      </select>
+                    <label className="text-sm font-medium text-gray-700">
+                      Select Sheet (optional - defaults to first sheet):
+                      {availableSheets.length > 0 && (
+                        <span className="ml-2 text-xs text-green-600">✓ {availableSheets.length} sheet{availableSheets.length !== 1 ? 's' : ''} found</span>
+                      )}
+                    </label>
+                    <select
+                      value={selectedSheetName}
+                      onChange={(e) => setSelectedSheetName(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      disabled={isImporting || isCreatingSheet}
+                    >
+                      <option value="">
+                        {availableSheets.length > 0 ? "-- Default (First Sheet) --" : "-- Click 'List Sheets' to see available sheets --"}
+                      </option>
+                      {availableSheets.map((sheetName, index) => (
+                        <option key={index} value={sheetName}>
+                          {sheetName}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 )}
                 
@@ -1429,7 +1655,7 @@ export default function CopilotKitPage() {
                       }
                     }}
                     className="flex-1"
-                    disabled={isImporting || !availableSheets?.length}
+                    disabled={isImporting || isCreatingSheet}
                   >
                     {isImporting ? "Importing..." : "Import Sheet"}
                   </Button>
@@ -1440,9 +1666,10 @@ export default function CopilotKitPage() {
                       setImportError("");
                       setAvailableSheets([]);
                       setSelectedSheetName("");
+                      setNewSheetTitle("");
                     }}
                     className="flex-1"
-                    disabled={isImporting}
+                    disabled={isImporting || isCreatingSheet}
                   >
                     Cancel
                   </Button>
@@ -1450,9 +1677,75 @@ export default function CopilotKitPage() {
               </div>
               
               <div className="text-xs text-gray-500 space-y-1">
-                <p>💡 <strong>Tip:</strong> Make sure your sheet is publicly accessible or you're signed in to Composio with the right Google account.</p>
+                <p>📄 <strong>Create New:</strong> Creates a fresh sheet and opens it in a new tab. Current canvas items will be synced automatically.</p>
+                <p>💡 <strong>Import Existing:</strong> Make sure your sheet is publicly accessible or you're signed in to Composio with the right Google account.</p>
                 <p>🤖 The system will analyze your data and create the best card types (projects, entities, notes, or charts).</p>
-                <p>⚡ Clicking "Import Sheet" will directly import the data to your canvas.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Format Warning Modal */}
+      {showFormatWarning && formatWarningDetails && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold text-orange-600">⚠️ Format Mismatch Warning</h2>
+              <button
+                onClick={() => {
+                  setShowFormatWarning(false);
+                  setFormatWarningDetails(null);
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div className="p-4 bg-orange-50 border border-orange-200 rounded-md">
+                <p className="text-sm text-orange-800 mb-2">
+                  <strong>The selected sheet contains data that may not match your current canvas format.</strong>
+                </p>
+                <div className="text-xs text-orange-700 space-y-1">
+                  <p>• <strong>Sheet:</strong> {formatWarningDetails.existingFormat}</p>
+                  <p>• <strong>Canvas:</strong> {formatWarningDetails.canvasFormat}</p>
+                </div>
+              </div>
+              
+              <p className="text-sm text-gray-600">
+                Importing will completely replace your current canvas data with the sheet contents. 
+                Your current canvas items will be lost unless you've saved them elsewhere.
+              </p>
+              
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => {
+                    setShowFormatWarning(false);
+                    const details = formatWarningDetails;
+                    setFormatWarningDetails(null);
+                    // Force import despite format mismatch
+                    importFromSheet(details.sheetId, details.sheetName, true);
+                  }}
+                  variant="destructive"
+                  className="flex-1"
+                >
+                  ⚠️ Import Anyway (Replace Canvas)
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => {
+                    setShowFormatWarning(false);
+                    setFormatWarningDetails(null);
+                  }}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+              </div>
+              
+              <div className="text-xs text-gray-500">
+                <p>💡 <strong>Tip:</strong> Consider creating a new sheet or backing up your current canvas data before importing.</p>
               </div>
             </div>
           </div>
@@ -1461,3 +1754,6 @@ export default function CopilotKitPage() {
     </div>
   );
 }
+
+
+
