@@ -1124,6 +1124,8 @@ export default function CopilotKitPage() {
     "focus:shadow-accent focus:placeholder:text-accent/65 focus:text-accent",
   );
 
+  const [sheetId, setSheetId] = useState<string | null>(null)
+
   return (
     <div
       style={{ "--copilot-kit-primary-color": "#2563eb" } as CopilotKitCSSProperties}
@@ -1365,6 +1367,8 @@ export default function CopilotKitPage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   id="sheet-id-input"
                   disabled={isImporting}
+                  value={sheetId}
+                  onChange={e => setSheetId(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       const input = e.target as HTMLInputElement;
@@ -1383,30 +1387,36 @@ export default function CopilotKitPage() {
                     }}
                     variant="outline"
                     className="flex-1"
-                    disabled={isImporting}
+                    disabled={isImporting || !sheetId}
                   >
                     List Sheets
                   </Button>
                 </div>
                 
-                {availableSheets.length > 0 && (
+                {(
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700">
-                      Select Sheet (optional - defaults to first sheet):
-                    </label>
-                    <select
-                      value={selectedSheetName}
-                      onChange={(e) => setSelectedSheetName(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      disabled={isImporting}
-                    >
-                      <option value="">-- Default (First Sheet) --</option>
-                      {availableSheets.map((sheetName, index) => (
-                        <option key={index} value={sheetName}>
-                          {sheetName}
-                        </option>
-                      ))}
-                    </select>
+                      <label className="text-sm font-medium text-gray-700">
+                          Select Sheet (optional - defaults to first sheet):
+                      </label>
+                      <select
+                          value={selectedSheetName}
+                          onChange={(e) => setSelectedSheetName(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          disabled={isImporting}
+                      >
+                          {availableSheets.length === 0 ? (
+                              <option value="">-- Click "List Sheets" to populate options --</option>
+                          ) : (
+                              <>
+                                  <option value="">-- Default (First Sheet) --</option>
+                                  {availableSheets.map((sheetName, index) => (
+                                      <option key={index} value={sheetName}>
+                                          {sheetName}
+                                      </option>
+                                  ))}
+                              </>
+                          )}
+                      </select>
                   </div>
                 )}
                 
@@ -1419,7 +1429,7 @@ export default function CopilotKitPage() {
                       }
                     }}
                     className="flex-1"
-                    disabled={isImporting}
+                    disabled={isImporting || !availableSheets?.length}
                   >
                     {isImporting ? "Importing..." : "Import Sheet"}
                   </Button>
@@ -1451,6 +1461,3 @@ export default function CopilotKitPage() {
     </div>
   );
 }
-
-
-
