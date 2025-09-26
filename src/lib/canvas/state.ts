@@ -6,6 +6,7 @@ export const initialState: AgentState = {
   globalDescription: "",
   lastAction: "",
   itemsCreated: 0,
+  syncSheetId: "",
 };
 
 export function isNonEmptyAgentState(value: unknown): value is AgentState {

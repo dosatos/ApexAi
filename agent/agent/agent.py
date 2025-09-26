@@ -1,14 +1,14 @@
-from typing import Annotated, List, Optional, Dict, Any
+from typing import Annotated, List, Optional, Any
 import os
 from dotenv import load_dotenv
 
-from llama_index.core.workflow import Context
 from llama_index.llms.openai import OpenAI
-from llama_index.protocols.ag_ui.events import StateSnapshotWorkflowEvent
+from llama_index.core.tools import FunctionTool
 from llama_index.protocols.ag_ui.router import get_ag_ui_workflow_router
 
 # Load environment variables early to support local development via .env
 load_dotenv()
+
 
 
 def _load_composio_tools() -> List[Any]:
@@ -29,7 +29,8 @@ def _load_composio_tools() -> List[Any]:
     try:
         from composio import Composio  # type: ignore
         from composio_llamaindex import LlamaIndexProvider  # type: ignore
-    except Exception:
+    except Exception as e:
+        print(f"Failed to import Composio: {e}")
         return []
 
     user_id = os.getenv("COMPOSIO_USER_ID", "default")
@@ -37,16 +38,110 @@ def _load_composio_tools() -> List[Any]:
     if not tool_ids:
         return []
     try:
+        print(f"Loading Composio tools: {tool_ids} for user: {user_id}")
         composio = Composio(provider=LlamaIndexProvider())
         tools = composio.tools.get(user_id=user_id, tools=tool_ids)
+        print(f"Successfully loaded {len(tools) if tools else 0} tools")
         # "tools" should be a list of LlamaIndex-compatible Tool objects
         return list(tools) if tools is not None else []
-    except Exception:
+    except Exception as e:
         # Fail closed; backend tools remain empty if configuration is invalid
+        print(f"Failed to load Composio tools: {e}")
         return []
 
 
 # --- Backend tools (server-side) ---
+
+def list_sheet_names(sheet_id: Annotated[str, "Google Sheets ID to list available sheet names from."]) -> str:
+    """List all available sheet names in a Google Spreadsheet."""
+    try:
+        from .sheets_integration import get_sheet_names
+        
+        sheet_names = get_sheet_names(sheet_id)
+        if not sheet_names:
+            return f"Failed to get sheet names from {sheet_id}. Please check the ID and ensure the sheet is accessible."
+        
+        return f"Available sheets in spreadsheet:\n" + "\n".join(f"- {name}" for name in sheet_names)
+        
+    except Exception as e:
+        return f"Error listing sheets from {sheet_id}: {str(e)}"
+
+def convert_sheet_to_canvas_items(
+    sheet_id: Annotated[str, "Google Sheets ID to import and convert to canvas items."],
+    sheet_name: Annotated[Optional[str], "Optional specific sheet name to import from. If not provided, uses first sheet."] = None
+) -> str:
+    """Convert Google Sheets data to canvas items using Composio."""
+    try:
+        from .sheets_integration import get_sheet_data, convert_sheet_to_canvas_items as sheet_to_canvas_converter
+        import json
+        
+        # Fetch sheet data using Composio
+        sheet_data = get_sheet_data(sheet_id, sheet_name)
+        if not sheet_data:
+            return f"Failed to fetch data from sheet ID: {sheet_id}. Please check the ID and ensure the sheet is accessible."
+        
+        # Convert to canvas format
+        canvas_data = sheet_to_canvas_converter(sheet_data)
+        
+        if not canvas_data or not canvas_data.get("items"):
+            return f"No items found in sheet {sheet_id} or failed to convert data."
+        
+        # Return structured data for agent to process
+        items_count = len(canvas_data["items"])
+        sheet_title = canvas_data.get("globalTitle", "Unknown Sheet")
+        
+        # Create instructions for the agent to create each item AND set syncSheetId
+        instructions = [f"✅ Converted {items_count} items from '{sheet_title}'. Now creating them in the canvas:\n"]
+        
+        # First, set the global title and description if available
+        if canvas_data.get("globalTitle"):
+            instructions.append(f"0. Call setGlobalTitle(title='{canvas_data['globalTitle']}')")
+        if canvas_data.get("globalDescription"):
+            instructions.append(f"1. Call setGlobalDescription(description='{canvas_data['globalDescription']}')")
+        
+        # Set the syncSheetId so auto-sync will work for future changes
+        instructions.append(f"2. Call setSyncSheetId(sheetId='{sheet_id}') to enable automatic bidirectional sync with Google Sheets")
+        
+        for i, item in enumerate(canvas_data["items"], 1):
+            item_type = item.get("type", "note")
+            item_name = item.get("name", f"Item {i}")
+            item_subtitle = item.get("subtitle", "")
+            item_data = item.get("data", {})
+            
+            instructions.append(f"{i}. Creating {item_type} '{item_name}'")
+            
+            # Create the item using frontend action
+            instructions.append(f"   - Call createItem(type='{item_type}', name='{item_name}')")
+            
+            # Set subtitle if present
+            if item_subtitle:
+                instructions.append(f"   - Call setItemSubtitleOrDescription(subtitle='{item_subtitle}', itemId='[created_id]')")
+            
+            # Set data fields based on type
+            if item_type == "project" and item_data:
+                if item_data.get("field1"): 
+                    instructions.append(f"   - Call setProjectField1(value='{item_data['field1']}', itemId='[created_id]')")
+                if item_data.get("field2"): 
+                    instructions.append(f"   - Call setProjectField2(value='{item_data['field2']}', itemId='[created_id]')")
+                if item_data.get("field3"): 
+                    instructions.append(f"   - Call setProjectField3(date='{item_data['field3']}', itemId='[created_id]')")
+            
+            elif item_type == "entity" and item_data:
+                if item_data.get("field1"): 
+                    instructions.append(f"   - Call setEntityField1(value='{item_data['field1']}', itemId='[created_id]')")
+                if item_data.get("field2"): 
+                    instructions.append(f"   - Call setEntityField2(value='{item_data['field2']}', itemId='[created_id]')")
+                for tag in item_data.get("field3", []):
+                    instructions.append(f"   - Call addEntityField3(tag='{tag}', itemId='[created_id]')")
+            
+            elif item_type == "note" and item_data:
+                if item_data.get("field1"): 
+                    instructions.append(f"   - Call setNoteField1(value='{item_data['field1']}', itemId='[created_id]')")
+        
+        return "\n".join(instructions) + "\n\nNote: Replace '[created_id]' with the actual ID returned from createItem calls."
+        
+    except Exception as e:
+        return f"Error converting sheet {sheet_id}: {str(e)}"
 
 
 # --- Frontend tool stubs (names/signatures only; execution happens in the UI) ---
@@ -171,6 +266,23 @@ def clearChartField1Value(itemId: Annotated[str, "Chart id."], index: Annotated[
 def removeChartField1(itemId: Annotated[str, "Chart id."], index: Annotated[int, "Metric index (0-based)."]) -> str:
     return f"removeChartField1({itemId}, {index})"
 
+def openSheetSelectionModal() -> str:
+    """Open modal for selecting Google Sheets."""
+    return "openSheetSelectionModal()"
+
+def setSyncSheetId(sheetId: Annotated[str, "Google Sheet ID to sync with."]) -> str:
+    """Set the Google Sheet ID for auto-sync."""
+    return f"setSyncSheetId({sheetId})"
+
+def searchUserSheets() -> str:
+    """Search user's Google Sheets and display them for selection."""
+    return "searchUserSheets()"
+
+def syncCanvasToSheets() -> str:
+    """Manually sync current canvas state to Google Sheets."""
+    return "syncCanvasToSheets()"
+
+
 FIELD_SCHEMA = (
     "FIELD SCHEMA (authoritative):\n"
     "- project.data:\n"
@@ -200,13 +312,57 @@ SYSTEM_PROMPT = (
     "DESCRIPTION MAPPING:\n"
     "- For project/entity/chart: treat 'description', 'overview', 'summary', 'caption', 'blurb' as the card subtitle; use setItemSubtitleOrDescription.\n"
     "- For notes: 'content', 'description', 'text', or 'note' refers to note content; use setNoteField1 / appendNoteField1 / clearNoteField1.\n\n"
+    "GOOGLE SHEETS INTEGRATION & AUTO-SYNC WORKFLOW:\n"
+    "- GOOGLE SHEETS IS THE SOURCE OF TRUTH: Always prioritize Google Sheets data over canvas state when there are conflicts.\n"
+    "- AUTO-SYNC BEHAVIOR: Automatically sync between Google Sheets and canvas WITHOUT asking questions. Just do it.\n"
+    "- Before using ANY Google Sheets functionality, ALWAYS first call COMPOSIO_CHECK_ACTIVE_CONNECTION with user_id='default' and toolkit id is GOOGLESHEETS to check if Google Sheets is connected.\n"
+    "- If the connection is NOT active, call COMPOSIO_INITIATE_CONNECTION to start the authentication flow.\n"
+    "- After initiating connection, tell the user: 'Please complete the Google Sheets authentication in your browser, then respond with \"connected\" to proceed.'\n"
+    "- Wait for the user to respond with 'connected' before using any Google Sheets actions (GOOGLESHEETS_*).\n"
+    "- If the connection is already active, you can proceed directly with Google Sheets operations.\n\n"
+    "AUTOMATIC SYNCING RULES:\n"
+    "1) When importing from Google Sheets: \n"
+    "   a) Use 'convert_sheet_to_canvas_items' tool to get the data\n"
+    "   b) ALWAYS call setSyncSheetId(sheetId) with the sheet ID to enable auto-sync\n"
+    "   c) Use frontend actions (createItem, setItemName, etc.) to create ALL items in canvas\n"
+    "   d) This ensures auto-sync triggers and maintains sheets as source of truth\n"
+    "2) When user makes changes in canvas: The frontend automatically syncs to Google Sheets if syncSheetId is set.\n"
+    "3) If you detect inconsistencies: Automatically pull from Google Sheets (source of truth) and update canvas.\n"
+    "4) Never ask permission to sync - just do it automatically and inform the user afterward.\n"
+    "5) CRITICAL: Always set syncSheetId when working with any Google Sheet to enable bidirectional sync.\n\n"
+    "IMPORT WORKFLOW (MANDATORY STEPS):\n"
+    "1. Call convert_sheet_to_canvas_items(sheet_id) to get conversion instructions\n"
+    "2. Execute ALL the instructions it returns, including:\n"
+    "   - setGlobalTitle() and setGlobalDescription() if provided\n"
+    "   - setSyncSheetId() - THIS IS CRITICAL for enabling auto-sync\n"
+    "   - createItem() for each item\n"
+    "   - All field setting actions (setProjectField1, etc.)\n"
+    "3. Confirm the import completed and auto-sync is now enabled\n\n"
     "STRICT GROUNDING RULES:\n"
-    "1) ONLY use shared state (items/globalTitle/globalDescription) as the source of truth.\n"
-    "2) Before ANY read or write, assume values may have changed; always read the latest state.\n"
-    "3) If a command doesn't specify which item to change, ask to clarify.\n"
+    "1) GOOGLE SHEETS is the ultimate source of truth when syncing.\n"
+    "2) Canvas state is secondary - update it to match Google Sheets when needed.\n"
+    "3) ALWAYS set syncSheetId when importing to enable bidirectional sync.\n"
+    "4) Use frontend actions, not direct state manipulation, to trigger auto-sync.\n"
+    "5) Always inform user AFTER syncing is complete with a summary of changes."
+)
+
+# Create additional backend tools
+_sheet_list_tool = FunctionTool.from_defaults(
+    fn=list_sheet_names,
+    name="list_sheet_names",
+    description="List all available sheet names in a Google Spreadsheet."
+)
+
+_sheet_conversion_tool = FunctionTool.from_defaults(
+    fn=convert_sheet_to_canvas_items,
+    name="convert_sheet_to_canvas_items",
+    description="Convert Google Sheets data to canvas items. Takes a sheet ID and optional sheet name, returns information about the converted items."
 )
 
 _backend_tools = _load_composio_tools()
+_backend_tools.append(_sheet_list_tool)
+_backend_tools.append(_sheet_conversion_tool)
+print(f"Backend tools loaded: {len(_backend_tools)} tools")
 
 agentic_chat_router = get_ag_ui_workflow_router(
     llm=OpenAI(model="gpt-4.1"),
@@ -237,6 +393,8 @@ agentic_chat_router = get_ag_ui_workflow_router(
         setChartField1Value,
         clearChartField1Value,
         removeChartField1,
+        openSheetSelectionModal,
+        setSyncSheetId,
     ],
     backend_tools=_backend_tools,
     system_prompt=SYSTEM_PROMPT,
@@ -247,5 +405,7 @@ agentic_chat_router = get_ag_ui_workflow_router(
         "globalDescription": "",
         "lastAction": "",
         "itemsCreated": 0,
+        "syncSheetId": "",  # Google Sheet ID for auto-sync
+        "syncSheetName": "",  # Google Sheet name for auto-sync
     },
 )
