@@ -63,12 +63,19 @@ export default function CopilotKitPage() {
     
     // Auto-sync to Google Sheets if syncSheetId is present
     const autoSyncToSheets = async () => {
-      if (!state || !state.syncSheetId || !state.items || state.items.length === 0) {
-        return; // No sync needed
+      console.log("[AUTO-SYNC] Checking sync conditions:", {
+        hasState: !!state,
+        syncSheetId: state?.syncSheetId,
+        itemsLength: state?.items?.length || 0
+      });
+      
+      if (!state || !state.syncSheetId) {
+        console.log("[AUTO-SYNC] Skipping - no sheet configured");
+        return; // No sync needed - no sheet configured
       }
       
       try {
-        console.log(`[AUTO-SYNC] Syncing ${state.items.length} items to sheet: ${state.syncSheetId}`);
+        console.log(`[AUTO-SYNC] Syncing ${state.items?.length || 0} items to sheet: ${state.syncSheetId}`);
         
         const response = await fetch('/api/sheets/sync', {
           method: 'POST',
@@ -899,6 +906,7 @@ export default function CopilotKitPage() {
   const [availableSheets, setAvailableSheets] = useState<string[]>([]);
   const [selectedSheetName, setSelectedSheetName] = useState<string>("");
   const [isCreatingSheet, setIsCreatingSheet] = useState<boolean>(false);
+  const [newSheetTitle, setNewSheetTitle] = useState<string>("");
   const [showFormatWarning, setShowFormatWarning] = useState<boolean>(false);
   const [formatWarningDetails, setFormatWarningDetails] = useState<{
     sheetId: string;
@@ -1030,6 +1038,7 @@ export default function CopilotKitPage() {
       
       if (result.success && result.data) {
         // Update the canvas state with imported data
+        console.log("Import result data:", result.data);
         setState(result.data);
         setShowSheetModal(false);
         setImportError("");
@@ -1524,6 +1533,7 @@ export default function CopilotKitPage() {
                   setImportError("");
                   setAvailableSheets([]);
                   setSelectedSheetName("");
+                  setNewSheetTitle("");
                 }}
                 className="text-gray-500 hover:text-gray-700"
                 disabled={isImporting || isCreatingSheet}
@@ -1535,13 +1545,12 @@ export default function CopilotKitPage() {
               <div className="flex gap-2 mb-4">
                 <Button 
                   onClick={() => {
-                    const titleInput = document.getElementById('sheet-title-input') as HTMLInputElement;
-                    if (titleInput?.value) {
-                      createNewSheet(titleInput.value);
+                    if (newSheetTitle.trim()) {
+                      createNewSheet(newSheetTitle);
                     }
                   }}
                   className="flex-1"
-                  disabled={isImporting || isCreatingSheet}
+                  disabled={isImporting || isCreatingSheet || !newSheetTitle.trim()}
                 >
                   {isCreatingSheet ? "Creating..." : "📄 Create New Sheet"}
                 </Button>
@@ -1551,12 +1560,12 @@ export default function CopilotKitPage() {
                 type="text"
                 placeholder="New sheet title (e.g., 'My Canvas Data')"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                id="sheet-title-input"
+                value={newSheetTitle}
+                onChange={(e) => setNewSheetTitle(e.target.value)}
                 disabled={isImporting || isCreatingSheet}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    const input = e.target as HTMLInputElement;
-                    createNewSheet(input.value);
+                  if (e.key === 'Enter' && newSheetTitle.trim()) {
+                    createNewSheet(newSheetTitle);
                   }
                 }}
               />
@@ -1652,6 +1661,7 @@ export default function CopilotKitPage() {
                       setImportError("");
                       setAvailableSheets([]);
                       setSelectedSheetName("");
+                      setNewSheetTitle("");
                     }}
                     className="flex-1"
                     disabled={isImporting || isCreatingSheet}

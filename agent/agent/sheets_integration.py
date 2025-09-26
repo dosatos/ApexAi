@@ -147,6 +147,8 @@ def convert_sheet_to_canvas_items(sheet_data: Dict[str, Any], original_sheet_id:
             "items": [],
             "globalTitle": sheet_data.get("title", "Imported Sheet") if sheet_data else "Empty Sheet",
             "globalDescription": "Imported from Google Sheets",
+            "syncSheetId": original_sheet_id or sheet_data.get("spreadsheet_info", {}).get("spreadsheet_id", "") if sheet_data else "",
+            "syncSheetName": sheet_data.get("sheet_name", "") if sheet_data else "",
         }
     
     rows = sheet_data["rows"]
@@ -160,6 +162,8 @@ def convert_sheet_to_canvas_items(sheet_data: Dict[str, Any], original_sheet_id:
             "items": [],
             "globalTitle": sheet_data.get("title", "Empty Sheet"),
             "globalDescription": "No data found in sheet",
+            "syncSheetId": original_sheet_id or sheet_data.get("spreadsheet_info", {}).get("spreadsheet_id", ""),
+            "syncSheetName": sheet_data.get("sheet_name", ""),
         }
     
     # Determine if first row is headers
@@ -190,58 +194,35 @@ def convert_sheet_to_canvas_items(sheet_data: Dict[str, Any], original_sheet_id:
         while len(padded_row) < len(headers):
             padded_row.append("")
         
-        # Check if this is a structured canvas format (id, type, name, subtitle, data)
-        if (len(headers) >= 5 and 
-            any('id' in h.lower() for h in headers[:2]) and
-            any('type' in h.lower() for h in headers[:3]) and
-            any('name' in h.lower() for h in headers[:4]) and
-            any('data' in h.lower() for h in headers)):
-            
-            # Parse structured canvas format
-            item_id = padded_row[0] or str(idx + 1).zfill(4)
-            raw_type = padded_row[1].strip() if padded_row[1] else ''
-            item_type = raw_type.lower()
-            if item_type not in ['project', 'entity', 'note', 'chart']:
-                item_type = 'note'
-            name = padded_row[2] or f"Item {idx + 1}"
-            subtitle = padded_row[3] if len(padded_row) > 3 else ""
-            
-            # Parse JSON data if present
-            try:
-                data = json.loads(padded_row[4]) if len(padded_row) > 4 and padded_row[4] else create_default_data(item_type)
-            except (json.JSONDecodeError, IndexError):
-                data = create_default_data(item_type)
-                
-            item = {
-                "id": item_id,
-                "type": item_type,
-                "name": name,
-                "subtitle": subtitle,
-                "data": data
-            }
-        else:
-            # Fallback to intelligent parsing for regular spreadsheets
-            item_type = determine_item_type(padded_row, headers)
-            name = next((cell for cell in padded_row if cell), f"Item {idx + 1}")
-            data = create_item_data(item_type, padded_row, headers)
-            
-            item = {
-                "id": str(idx + 1).zfill(4),
-                "type": item_type,
-                "name": name,
-                "subtitle": padded_row[1] if len(padded_row) > 1 and padded_row[1] else "",
-                "data": data
-            }
+        # Parse any spreadsheet format intelligently
+        item_type = determine_item_type(padded_row, headers)
+        name = next((cell for cell in padded_row if cell), f"Item {idx + 1}")
+        data = create_item_data(item_type, padded_row, headers)
+        
+        item = {
+            "id": str(idx + 1).zfill(4),
+            "type": item_type,
+            "name": name,
+            "subtitle": padded_row[1] if len(padded_row) > 1 and padded_row[1] else "",
+            "data": data
+        }
         
         items.append(item)
     
-    return {
+    sync_sheet_id = original_sheet_id or sheet_data.get("spreadsheet_info", {}).get("spreadsheet_id", "")
+    sync_sheet_name = sheet_data.get("sheet_name", "")
+    
+    
+    result = {
         "items": items,
         "globalTitle": sheet_data.get("title", "Imported Sheet"),
         "globalDescription": f"Imported from Google Sheets • {len(items)} items",
-        "syncSheetId": original_sheet_id or sheet_data.get("spreadsheet_info", {}).get("spreadsheet_id", ""),
-        "syncSheetName": sheet_data.get("sheet_name", ""),  # Store the sheet name used
+        "syncSheetId": sync_sheet_id,
+        "syncSheetName": sync_sheet_name,
     }
+    
+    
+    return result
 
 def create_default_data(item_type: str) -> Dict[str, Any]:
     """Create default empty data structure for a given item type."""
@@ -440,6 +421,7 @@ def parse_numeric_value(value: str) -> Optional[float]:
         pass
     return None
 
+
 def sync_canvas_to_sheet(sheet_id: str, canvas_state: Dict[str, Any], sheet_name: Optional[str] = None) -> Dict[str, Any]:
     """
     Sync canvas state to Google Sheets with proper deletion of removed items.
@@ -475,6 +457,9 @@ def sync_canvas_to_sheet(sheet_id: str, canvas_state: Dict[str, Any], sheet_name
         current_row_count = 0
         if current_sheet_data and current_sheet_data.get("rows"):
             current_row_count = len(current_sheet_data["rows"])
+        
+        print(f"Current sheet has {current_row_count} rows")
+        print(f"Canvas has {len(items)} items to sync")
         
         # Prepare new sheet data
         headers = ["id", "type", "name", "subtitle", "data"]
@@ -536,6 +521,9 @@ def sync_canvas_to_sheet(sheet_id: str, canvas_state: Dict[str, Any], sheet_name
                 # Continue anyway - the batch update might still work
         
         # Step 2: Update the sheet with new data
+        print(f"Updating sheet with {len(new_rows)} rows (including header)")
+        print(f"First few rows: {new_rows[:3]}")
+        
         result = composio.tools.execute(
             user_id=user_id,
             slug="GOOGLESHEETS_BATCH_UPDATE",
@@ -547,6 +535,8 @@ def sync_canvas_to_sheet(sheet_id: str, canvas_state: Dict[str, Any], sheet_name
                 "valueInputOption": "USER_ENTERED"
             }
         )
+        
+        print(f"Batch update result: {result}")
         
         if result and result.get("successful"):
             return {
