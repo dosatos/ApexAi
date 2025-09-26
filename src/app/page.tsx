@@ -1624,6 +1624,9 @@ export default function CopilotKitPage() {
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-gray-700">
                       Select Sheet (optional - defaults to first sheet):
+                      {availableSheets.length > 0 && (
+                        <span className="ml-2 text-xs text-green-600">✓ {availableSheets.length} sheet{availableSheets.length !== 1 ? 's' : ''} found</span>
+                      )}
                     </label>
                     <select
                       value={selectedSheetName}
@@ -1631,7 +1634,9 @@ export default function CopilotKitPage() {
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       disabled={isImporting || isCreatingSheet}
                     >
-                      <option value="">-- Default (First Sheet) --</option>
+                      <option value="">
+                        {availableSheets.length > 0 ? "-- Default (First Sheet) --" : "-- Click 'List Sheets' to see available sheets --"}
+                      </option>
                       {availableSheets.map((sheetName, index) => (
                         <option key={index} value={sheetName}>
                           {sheetName}
