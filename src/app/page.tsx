@@ -1315,7 +1315,7 @@ export default function CopilotKitPage() {
     "focus:shadow-accent focus:placeholder:text-accent/65 focus:text-accent",
   );
 
-  const [sheetId, setSheetId] = useState<string | null>(null)
+  const [sheetId, setSheetId] = useState<string>('')
 
   return (
     <div
@@ -1596,6 +1596,8 @@ export default function CopilotKitPage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   id="sheet-id-input"
                   disabled={isImporting || isCreatingSheet}
+                  value={sheetId}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSheetId(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       const input = e.target as HTMLInputElement;
@@ -1605,19 +1607,19 @@ export default function CopilotKitPage() {
                 />
                 
                 <div className="flex gap-2">
-                  <Button 
-                    onClick={() => {
-                      const input = document.getElementById('sheet-id-input') as HTMLInputElement;
-                      if (input?.value) {
-                        fetchAvailableSheets(input.value);
-                      }
-                    }}
-                    variant="outline"
-                    className="flex-1"
-                    disabled={isImporting || isCreatingSheet}
-                  >
-                    List Sheets
-                  </Button>
+                   <Button 
+                     onClick={() => {
+                       const input = document.getElementById('sheet-id-input') as HTMLInputElement;
+                       if (input?.value) {
+                         fetchAvailableSheets(input.value);
+                       }
+                     }}
+                     variant="outline"
+                     className="flex-1 disabled:hover:bg-background disabled:hover:text-current"
+                     disabled={isImporting || isCreatingSheet || !sheetId}
+                   >
+                     List Sheets
+                   </Button>
                 </div>
                 
                 {(
@@ -1655,7 +1657,7 @@ export default function CopilotKitPage() {
                       }
                     }}
                     className="flex-1"
-                    disabled={isImporting || isCreatingSheet}
+                    disabled={isImporting || isCreatingSheet || !availableSheets.length}
                   >
                     {isImporting ? "Importing..." : "Import Sheet"}
                   </Button>
