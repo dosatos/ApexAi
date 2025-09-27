@@ -524,6 +524,23 @@ export default function CopilotKitPage() {
   const [docImportError, setDocImportError] = useState<string>("");
   const [docId, setDocId] = useState<string>("");
 
+  // Google Drive Integration Actions
+  const [showDriveModal, setShowDriveModal] = useState<boolean>(false);
+  const [driveFiles, setDriveFiles] = useState<Array<{
+    id: string;
+    name: string;
+    mimeType: string;
+    size?: number;
+    modifiedTime: string;
+    webViewLink?: string;
+    parents?: string[];
+    thumbnailLink?: string;
+  }>>([]);
+  const [isLoadingFiles, setIsLoadingFiles] = useState<boolean>(false);
+  const [driveError, setDriveError] = useState<string>("");
+  const [driveSearchQuery, setDriveSearchQuery] = useState<string>("");
+  const [isImportingDriveFile, setIsImportingDriveFile] = useState<boolean>(false);
+
   const fetchAvailableSheets = async (sheetId: string) => {
     try {
       // Extract sheet ID from URL if needed
@@ -965,6 +982,158 @@ export default function CopilotKitPage() {
     }
   };
 
+  // Google Drive Integration Functions
+  const loadDriveFiles = async () => {
+    setIsLoadingFiles(true);
+    setDriveError("");
+
+    try {
+      const response = await fetch('/api/drive/list', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          page_size: 20
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.details || errorData.error || 'Failed to load Drive files');
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        setDriveFiles(result.files || []);
+      } else {
+        throw new Error(result.error || 'Failed to load Drive files');
+      }
+
+    } catch (error) {
+      console.error('Load Drive files error:', error);
+      setDriveError(error instanceof Error ? error.message : 'Failed to load Drive files');
+    } finally {
+      setIsLoadingFiles(false);
+    }
+  };
+
+  const searchDriveFiles = async (query: string) => {
+    if (!query.trim()) {
+      loadDriveFiles();
+      return;
+    }
+
+    setIsLoadingFiles(true);
+    setDriveError("");
+
+    try {
+      const response = await fetch('/api/drive/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: query.trim(),
+          page_size: 20
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.details || errorData.error || 'Failed to search Drive files');
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        setDriveFiles(result.files || []);
+      } else {
+        throw new Error(result.error || 'Failed to search Drive files');
+      }
+
+    } catch (error) {
+      console.error('Search Drive files error:', error);
+      setDriveError(error instanceof Error ? error.message : 'Failed to search Drive files');
+    } finally {
+      setIsLoadingFiles(false);
+    }
+  };
+
+  const importFromDrive = async (fileId: string) => {
+    setIsImportingDriveFile(true);
+    setDriveError("");
+
+    try {
+      const response = await fetch('/api/drive/import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          file_id: fileId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.details || errorData.error || 'Failed to import Drive file');
+      }
+
+      const result = await response.json();
+
+      if (result.success && result.data) {
+        // Merge imported documents with existing state instead of replacing
+        setState((prev) => {
+          const currentState = prev ?? initialState;
+          const importedState = result.data;
+          const importedItems = importedState.items || [];
+
+          if (importedItems.length === 0) {
+            console.log("No items found in imported file");
+            return currentState;
+          }
+
+          // Generate new IDs for imported items to avoid conflicts
+          const existingItems = currentState.items || [];
+          const maxExisting = existingItems.reduce((max, item) => {
+            const parsed = Number.parseInt(String(item.id ?? "0"), 10);
+            return Number.isFinite(parsed) ? Math.max(max, parsed) : max;
+          }, 0);
+          const priorCount = Number.isFinite(currentState.itemsCreated) ? (currentState.itemsCreated as number) : 0;
+          let nextNumber = Math.max(priorCount, maxExisting);
+
+          // Assign new IDs to imported items
+          const newItems = importedItems.map((item: Item) => ({
+            ...item,
+            id: String(++nextNumber).padStart(4, "0")
+          }));
+
+          // Merge with existing items
+          const mergedItems = [...existingItems, ...newItems];
+
+          return {
+            ...currentState,
+            items: mergedItems,
+            itemsCreated: nextNumber,
+            lastAction: `imported:${newItems.length}_drive_files`
+          };
+        });
+
+        setShowDriveModal(false);
+        setDriveError("");
+        console.log("Successfully imported Drive file:", result.message);
+      } else {
+        throw new Error(result.message || 'Failed to process Drive file data');
+      }
+
+    } catch (error) {
+      console.error('Import Drive file error:', error);
+      setDriveError(error instanceof Error ? error.message : 'Failed to import Drive file');
+    } finally {
+      setIsImportingDriveFile(false);
+    }
+  };
+
   useCopilotAction({
     name: "openSheetSelectionModal",
     description: "Open modal for selecting Google Sheets.",
@@ -1191,9 +1360,9 @@ export default function CopilotKitPage() {
                 </motion.div>
               )}
 
-              {/* Add Documents Button - shown when there are existing items */}
+              {/* Add Documents Buttons - shown when there are existing items */}
               {!showJsonView && (viewState.items ?? []).length > 0 && (
-                <div className="mb-6 flex justify-center">
+                <div className="mb-6 flex justify-center gap-3">
                   <Button
                     onClick={() => setShowDocModal(true)}
                     variant="outline"
@@ -1201,7 +1370,19 @@ export default function CopilotKitPage() {
                     className="gap-2 text-base font-semibold bg-card rounded-lg hover:bg-accent/10 border-2 border-dashed border-border/70 hover:border-accent/40 transition-colors"
                   >
                     <Plus className="size-5" />
-                    Add Documents
+                    Add from Docs
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setShowDriveModal(true);
+                      loadDriveFiles();
+                    }}
+                    variant="outline"
+                    size="default"
+                    className="gap-2 text-base font-semibold bg-card rounded-lg hover:bg-accent/10 border-2 border-dashed border-border/70 hover:border-accent/40 transition-colors"
+                  >
+                    <Plus className="size-5" />
+                    Browse Drive
                   </Button>
                 </div>
               )}
@@ -1506,7 +1687,7 @@ export default function CopilotKitPage() {
               </div>
 
               <p className="text-sm text-muted-foreground">
-                Importing will completely replace your current analysis data with the sheet contents. Your existing cards will be lost unless they're saved elsewhere.
+                Importing will completely replace your current analysis data with the sheet contents. Your existing cards will be lost unless they&apos;re saved elsewhere.
               </p>
 
               <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
@@ -1647,6 +1828,177 @@ export default function CopilotKitPage() {
                       }
                     }}
                     disabled={isImportingDoc}
+                  >
+                    Close
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Google Drive Modal */}
+      {showDriveModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-background/75 px-4 py-10 backdrop-blur-sm sm:px-6"
+          onClick={() => {
+            if (!isLoadingFiles && !isImportingDriveFile) {
+              setShowDriveModal(false);
+              setDriveError("");
+              setDriveFiles([]);
+              setDriveSearchQuery("");
+            }
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="drive-modal-title"
+        >
+          <div
+            className="relative w-full max-w-4xl overflow-hidden rounded-3xl border border-border bg-card shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-border/80 bg-muted px-6 py-5 sm:px-8">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">Browser</p>
+                <h2 id="drive-modal-title" className="mt-1 text-lg font-semibold">Google Drive</h2>
+                <p className="text-sm text-muted-foreground">Browse and import files from your Google Drive.</p>
+              </div>
+              <button
+                onClick={() => {
+                  if (!isLoadingFiles && !isImportingDriveFile) {
+                    setShowDriveModal(false);
+                    setDriveError("");
+                    setDriveFiles([]);
+                    setDriveSearchQuery("");
+                  }
+                }}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-transparent text-muted-foreground transition-colors hover:border-border hover:text-foreground"
+                disabled={isLoadingFiles || isImportingDriveFile}
+                aria-label="Close drive modal"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="px-6 pb-6 sm:px-8 sm:pb-8">
+              <div className="mt-6 space-y-6">
+                {/* Search Section */}
+                <div className="space-y-3">
+                  <label className="text-sm font-medium text-foreground">Search Files</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Search by file name..."
+                      className="flex-1 rounded-xl border border-border/80 bg-background px-3.5 py-2.5 text-sm text-foreground shadow-xs transition-all placeholder:text-muted-foreground/70 focus:border-accent focus:ring-2 focus:ring-accent/30 focus:outline-none"
+                      value={driveSearchQuery}
+                      onChange={(e) => setDriveSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          searchDriveFiles(driveSearchQuery);
+                        }
+                      }}
+                      disabled={isLoadingFiles || isImportingDriveFile}
+                    />
+                    <Button
+                      onClick={() => searchDriveFiles(driveSearchQuery)}
+                      variant="outline"
+                      disabled={isLoadingFiles || isImportingDriveFile}
+                    >
+                      {isLoadingFiles ? "Searching..." : "Search"}
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setDriveSearchQuery("");
+                        loadDriveFiles();
+                      }}
+                      variant="outline"
+                      disabled={isLoadingFiles || isImportingDriveFile}
+                    >
+                      Refresh
+                    </Button>
+                  </div>
+                </div>
+
+                {driveError && (
+                  <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                    {driveError}
+                  </div>
+                )}
+
+                {/* Files List */}
+                <div className="space-y-3">
+                  <label className="text-sm font-medium text-foreground">
+                    Files {driveFiles.length > 0 && `(${driveFiles.length})`}
+                  </label>
+
+                  {isLoadingFiles ? (
+                    <div className="rounded-xl border border-border/70 bg-muted/50 px-4 py-8 text-center">
+                      <p className="text-sm text-muted-foreground">Loading files...</p>
+                    </div>
+                  ) : driveFiles.length === 0 ? (
+                    <div className="rounded-xl border border-border/70 bg-muted/50 px-4 py-8 text-center">
+                      <p className="text-sm text-muted-foreground">
+                        {driveSearchQuery ? "No files found matching your search." : "No files found or failed to load."}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="max-h-96 overflow-y-auto space-y-2 rounded-xl border border-border/70 bg-muted/50 p-3">
+                      {driveFiles.map((file) => (
+                        <div
+                          key={file.id}
+                          className="flex items-center justify-between rounded-lg border border-border/50 bg-background p-3 hover:bg-accent/5"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-foreground truncate">{file.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {file.mimeType} • Modified: {new Date(file.modifiedTime).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 ml-4">
+                            {file.webViewLink && (
+                              <Button
+                                onClick={() => window.open(file.webViewLink, '_blank')}
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs"
+                              >
+                                View
+                              </Button>
+                            )}
+                            <Button
+                              onClick={() => importFromDrive(file.id)}
+                              size="sm"
+                              disabled={isImportingDriveFile}
+                              className="text-xs"
+                            >
+                              {isImportingDriveFile ? "Importing..." : "Import"}
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-border/70 bg-muted px-5 py-4 text-xs text-muted-foreground">
+                  <p><span className="font-medium text-foreground">Note:</span> We support importing text files, Google Docs, Google Sheets, and other document formats.</p>
+                  <p className="mt-2">Files will be converted to documents in your analysis canvas.</p>
+                </div>
+
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                  <Button
+                    variant="outline"
+                    className="sm:w-fit"
+                    onClick={() => {
+                      if (!isLoadingFiles && !isImportingDriveFile) {
+                        setShowDriveModal(false);
+                        setDriveError("");
+                        setDriveFiles([]);
+                        setDriveSearchQuery("");
+                      }
+                    }}
+                    disabled={isLoadingFiles || isImportingDriveFile}
                   >
                     Close
                   </Button>

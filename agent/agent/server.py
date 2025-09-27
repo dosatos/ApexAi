@@ -30,6 +30,7 @@ _load_env_files()
 from .agent import agentic_chat_router
 from .sheets_integration import get_sheet_data, convert_sheet_to_canvas_items, sync_canvas_to_sheet, get_sheet_names, create_new_sheet
 from .docs_integration import get_document_content, convert_document_to_canvas_items, create_new_document, write_canvas_to_document, create_document_with_item_content, update_document_with_item_content
+from .drive_integration import list_drive_files, get_file_content, search_drive_files, convert_drive_file_to_canvas_item, get_folder_info
 
 app = FastAPI()
 app.include_router(agentic_chat_router)
@@ -63,6 +64,17 @@ class CreateDocWithItemRequest(BaseModel):
 class UpdateDocWithItemRequest(BaseModel):
     doc_id: str
     item: dict
+
+class DriveListRequest(BaseModel):
+    folder_id: Optional[str] = None
+    page_size: Optional[int] = 20
+
+class DriveSearchRequest(BaseModel):
+    query: str
+    page_size: Optional[int] = 20
+
+class DriveFileRequest(BaseModel):
+    file_id: str
 
 # Sheets sync endpoint
 @app.post("/sheets/sync")
@@ -439,6 +451,138 @@ async def update_doc_with_item(request: UpdateDocWithItemRequest):
         raise
     except Exception as e:
         print(f"Error updating document with item: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+# Google Drive endpoints
+@app.post("/drive/list")
+async def list_files(request: DriveListRequest):
+    """
+    List files in Google Drive.
+
+    Args:
+        request: Contains optional folder_id and page_size
+
+    Returns:
+        List of files with metadata
+    """
+    try:
+        print(f"Listing Drive files (folder: {request.folder_id}, limit: {request.page_size})")
+
+        # List files using Composio
+        files_data = list_drive_files(request.folder_id, request.page_size or 20)
+        if not files_data:
+            raise HTTPException(
+                status_code=400,
+                detail="Failed to list Drive files. Please check your authentication and permissions."
+            )
+
+        return JSONResponse(content={
+            "success": True,
+            "files": files_data.get("files", []),
+            "folder_id": files_data.get("folder_id"),
+            "total_count": files_data.get("total_count", 0),
+            "message": f"Found {len(files_data.get('files', []))} files"
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error listing Drive files: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+@app.post("/drive/search")
+async def search_files(request: DriveSearchRequest):
+    """
+    Search for files in Google Drive.
+
+    Args:
+        request: Contains search query and page_size
+
+    Returns:
+        List of matching files with metadata
+    """
+    try:
+        print(f"Searching Drive files for: '{request.query}'")
+
+        # Search files using Composio
+        search_results = search_drive_files(request.query, request.page_size or 20)
+        if not search_results:
+            raise HTTPException(
+                status_code=400,
+                detail="Failed to search Drive files. Please check your authentication and permissions."
+            )
+
+        return JSONResponse(content={
+            "success": True,
+            "files": search_results.get("files", []),
+            "query": search_results.get("query"),
+            "total_count": search_results.get("total_count", 0),
+            "message": f"Found {len(search_results.get('files', []))} files matching '{request.query}'"
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error searching Drive files: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+@app.post("/drive/import")
+async def import_from_drive(request: DriveFileRequest):
+    """
+    Import a file from Google Drive to canvas format.
+
+    Args:
+        request: Contains file_id to import
+
+    Returns:
+        Canvas item created from the Drive file
+    """
+    try:
+        print(f"Importing Drive file: {request.file_id}")
+
+        # Get file content using Composio
+        file_data = get_file_content(request.file_id)
+        if not file_data:
+            raise HTTPException(
+                status_code=400,
+                detail="Failed to get file content. Please check the file ID and ensure it's accessible."
+            )
+
+        # Convert to canvas item
+        canvas_item = convert_drive_file_to_canvas_item(file_data)
+        if not canvas_item:
+            raise HTTPException(
+                status_code=400,
+                detail="Failed to convert file to canvas format."
+            )
+
+        # Create a simple canvas state with the single item
+        canvas_data = {
+            "items": [canvas_item],
+            "globalTitle": f"Import: {canvas_item.get('name', 'Unknown File')}",
+            "globalDescription": f"Imported from Google Drive",
+            "itemsCreated": 1,
+        }
+
+        return JSONResponse(content={
+            "success": True,
+            "data": canvas_data,
+            "message": f"Successfully imported '{canvas_item.get('name', 'Unknown File')}' from Google Drive"
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error importing from Drive: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
