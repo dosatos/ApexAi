@@ -327,6 +327,8 @@ def create_new_document(title: str = "Canvas Export", markdown_content: str = ""
     Returns:
         Dictionary with new document info
     """
+    title = ensure_gdoc_extension(title)
+
     composio, user_id = get_composio_client()
     if not composio or not user_id:
         return {"success": False, "error": "Failed to initialize Composio client"}
@@ -371,6 +373,21 @@ def create_new_document(title: str = "Canvas Export", markdown_content: str = ""
         }
 
 
+def ensure_gdoc_extension(title: str) -> str:
+    """
+    Ensure the title has a .gdoc extension for Google Docs.
+
+    Args:
+        title: Original title
+
+    Returns:
+        Title with .gdoc extension if not already present
+    """
+    if not title.endswith('.gdoc'):
+        return f"{title}.gdoc"
+    return title
+
+
 def create_document_with_item_content(item: Dict[str, Any]) -> Dict[str, Any]:
     """
     Create a new Google Doc with content from a single canvas item.
@@ -382,6 +399,7 @@ def create_document_with_item_content(item: Dict[str, Any]) -> Dict[str, Any]:
         Dictionary with new document info
     """
     title = item.get("name", "Untitled Document")
+    title = ensure_gdoc_extension(title)
     item_data = item.get("data", {})
 
     print(f"Creating document for item: {title}")
@@ -389,7 +407,6 @@ def create_document_with_item_content(item: Dict[str, Any]) -> Dict[str, Any]:
 
     # Build markdown content for the item
     content_parts = []
-    content_parts.append(f"# {title}\n\n")
 
     # Get the main content based on item type
     if item.get("type") == "document":
@@ -431,7 +448,6 @@ def update_document_with_item_content(doc_id: str, item: Dict[str, Any]) -> Dict
 
         # Build markdown content for the item
         content_parts = []
-        content_parts.append(f"# {title}\n\n")
 
         # Get the main content based on item type
         if item.get("type") == "document":
