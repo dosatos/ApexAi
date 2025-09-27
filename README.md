@@ -325,7 +325,7 @@ With LlamaIndex's `get_ag_ui_workflow_router`, you can define backend tools.
 
 ```py
 def hello_world(name: str) -> str:
-  return f"Hello, {str}"
+  return f"Hello, {str}" # tool result
 
 agentic_chat_router = get_ag_ui_workflow_router(
     llm=OpenAI(model="gpt-4.1"),
@@ -383,11 +383,16 @@ const Main = () => {
   // ...
 
   useCopilotAction({
-    name: "hello_world"
-    handle: () => {
-      return "hello, world!" // tool result
-    }
-  })
+    name: "say_hello",
+    description: "Say hello to the name, make sure to get it first",
+    available: "remote",
+    parameters: [
+      { name: "name", type: "string", required: true, description: "The name to say hi to" },
+    ],
+    handler: ({ description }: { description: string }) => {
+      return "Hello, Tyler" // tool_result
+    },
+  });
 
   // ...
 }
