@@ -1391,15 +1391,20 @@ export default function CopilotKitPage() {
                 <EmptyState className="flex-1">
                   <div className="mx-auto max-w-lg text-center">
                     <h2 className="text-lg font-semibold text-foreground">Nothing here yet</h2>
-                    <p className="mt-2 text-sm text-muted-foreground">Create your first item to get started.</p>
+                    <p className="mt-2 text-sm text-muted-foreground">Browse your Google Drive to import files and get started.</p>
                     <div className="mt-6 flex justify-center">
-                      <NewItemMenu onSelect={(t: CardType) => {
-                        if (t === "document") {
-                          setShowDocModal(true);
-                        } else {
-                          addItem(t);
-                        }
-                      }} align="center" className="md:h-10" />
+                      <Button
+                        onClick={() => {
+                          setShowDriveModal(true);
+                          loadDriveFiles();
+                        }}
+                        variant="outline"
+                        size="default"
+                        className="gap-2 text-base font-semibold bg-card rounded-lg hover:bg-accent/10 border-2 border-dashed border-border/70 hover:border-accent/40 transition-colors md:h-10"
+                      >
+                        <Plus className="size-5" />
+                        Browse Drive
+                      </Button>
                     </div>
                   </div>
                 </EmptyState>
