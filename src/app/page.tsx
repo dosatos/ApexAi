@@ -1379,18 +1379,9 @@ export default function CopilotKitPage() {
                 </motion.div>
               )}
 
-              {/* Add Documents Buttons - shown when there are existing items */}
+              {/* Browse Drive Button - shown when there are existing items */}
               {!showJsonView && (viewState.items ?? []).length > 0 && (
                 <div className="mb-6 flex justify-center gap-3">
-                  <Button
-                    onClick={() => setShowDocModal(true)}
-                    variant="outline"
-                    size="default"
-                    className="gap-2 text-base font-semibold bg-card rounded-lg hover:bg-accent/10 border-2 border-dashed border-border/70 hover:border-accent/40 transition-colors"
-                  >
-                    <Plus className="size-5" />
-                    Add from Docs
-                  </Button>
                   <Button
                     onClick={() => {
                       setShowDriveModal(true);
@@ -1942,6 +1933,21 @@ export default function CopilotKitPage() {
                       Refresh
                     </Button>
                   </div>
+                </div>
+
+                {/* Import by Link Section */}
+                <div className="flex items-center justify-between py-3 border-y border-border/50">
+                  <p className="text-sm text-muted-foreground">Or import directly from a Google Docs/Sheets link</p>
+                  <Button
+                    onClick={() => {
+                      setShowDriveModal(false);
+                      setShowDocModal(true);
+                    }}
+                    variant="outline"
+                    size="sm"
+                  >
+                    Import by Link
+                  </Button>
                 </div>
 
                 {driveError && (
