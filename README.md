@@ -56,7 +56,7 @@ Before getting started, you'll need to the following.
 ### Quickstart
 
 > [!WARNING]
-> If you run into any problems getting started, make sure you have all the [Prerequisites](#prerequisites) installed, or else it can fail.
+> If you run into problems getting started, make sure you have all the [Prerequisites](#prerequisites) installed, or else it can fail.
 
 1. Install dependencies using your preferred package manager:
 
@@ -78,7 +78,7 @@ Before getting started, you'll need to the following.
 
     > **Note:** This repository ignores lock files (package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb) to avoid conflicts between different package managers. Each developer should generate their own lock file using their preferred package manager. After that, make sure to delete it from the `.gitignore`.
 
-3. Setup Googlesheets Integration
+2. Setup Googlesheets Integration
 
     Navigate to https://app.composio.dev/developers, setup a Google Sheet integration and grab an API key.
 
@@ -94,7 +94,7 @@ Before getting started, you'll need to the following.
 
     </details>
 
-4. Set up your environment variables:
+3. Set up your environment variables:
 
     There are two `.env` files to configure:
 
@@ -123,7 +123,7 @@ Before getting started, you'll need to the following.
     COPILOT_CLOUD_PUBLIC_API_KEY="" # optional (for CopilotKit Cloud features)
     ```
 
-5. Start the development server:
+4. Start the development server:
     ```bash
     # Using pnpm
     pnpm dev
@@ -140,7 +140,7 @@ Before getting started, you'll need to the following.
 
     This will start both the UI and agent servers concurrently.
 
-6. ✅ You're done!
+5. ✅ You're done!
 
     Open http://localhost:3000 to use the starter and try it out!
 
@@ -158,21 +158,21 @@ Before getting started, you'll need to the following.
     - "Add an entity and a note"
     - "Create a chart with sample metrics"
 
-    2. **Edit Cards**: Click on any field to edit directly, or ask the AI
+    1. **Edit Cards**: Click on any field to edit directly, or ask the AI
     - "Set the project field1 to 'Q1 Planning'"
     - "Add a checklist item 'Review budget'"
     - "Update the chart metrics"
 
-    3. **Sync with Google Sheets**: Use the Google Sheets button or ask the AI
+    1. **Sync with Google Sheets**: Use the Google Sheets button or ask the AI
     - "Create a new Google Sheet" - Creates a sheet for syncing canvas data
     - "Sync all items to Google Sheets" - Syncs current canvas state to the sheet
     - "Get the sheet URL" - Retrieves the Google Sheets link
 
-    4. **Execute Plans**: Give the AI multi-step instructions
+    1. **Execute Plans**: Give the AI multi-step instructions
     - "Create 3 projects with different priorities and add 2 checklist items to each"
     - The AI will create a plan and execute it step by step with visual progress
 
-    5. **View JSON**: Toggle between the visual canvas and JSON view using the button at the bottom
+    1. **View JSON**: Toggle between the visual canvas and JSON view using the button at the bottom
 
     </details>
 
