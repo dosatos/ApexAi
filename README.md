@@ -40,7 +40,6 @@ Plug-in these resources to let coding agents help you and our team!
 - [vibe-llama](https://github.com/run-llama/vibe-llama)
 - [Copilotkit MCP](https://docs.copilotkit.ai/vibe-coding-mcp)
 
-
 #### Prerequisites
 Before getting started, you'll need to the following.
 - Node.js 20+ 
@@ -55,6 +54,9 @@ Before getting started, you'll need to the following.
   - [bun](https://bun.sh/)
 
 #### Quickstart
+
+> [!WARNING]
+> If you run into any problems getting started, make sure you have all the [Prerequisites](#prerequisites) installed, or else it can fail.
 
 1. Install dependencies using your preferred package manager:
 
@@ -172,11 +174,7 @@ Before getting started, you'll need to the following.
 
     5. **View JSON**: Toggle between the visual canvas and JSON view using the button at the bottom
 
-
     </details>
-
-
-
 
 ### Available Scripts
 The following scripts can also be run using your preferred package manager:
@@ -355,7 +353,6 @@ const Main = () => {
   
 </details>
 
-
 <details>
 
 <summary>Frontend tools -></summary>
@@ -493,7 +490,6 @@ uv sync
 ```
 
 </details>
-
 
 <details>
 
