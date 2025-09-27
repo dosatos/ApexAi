@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This is a fullstack AI-powered canvas application built with **Next.js** (frontend), **Python FastAPI** (backend), **LlamaIndex** (agent framework), **CopilotKit** (AI UI integration), and **Composio** (external tool integrations). The application provides a visual canvas interface for managing interactive cards (projects, entities, notes, charts) with real-time AI synchronization and Google Sheets integration.
+This is a fullstack AI-powered canvas application built with **Next.js** (frontend), **Python FastAPI** (backend), **LlamaIndex** (agent framework), **CopilotKit** (AI UI integration), and **Composio** (external tool integrations). The application provides a visual canvas interface for managing interactive cards (projects, entities, notes, charts) with real-time AI synchronization and Google Sheets & Google Docs integration.
 
 ## Technology Stack
 
@@ -20,7 +20,7 @@ This is a fullstack AI-powered canvas application built with **Next.js** (fronte
 - **FastAPI** - Web framework
 - **LlamaIndex** - Agent and workflow framework
 - **OpenAI GPT-4.1** - LLM
-- **Composio** - External tool integrations (Google Sheets)
+- **Composio** - External tool integrations (Google Sheets, Google Docs)
 - **Python-dotenv** - Environment configuration
 - **Uvicorn** - ASGI server
 
@@ -32,11 +32,15 @@ This is a fullstack AI-powered canvas application built with **Next.js** (fronte
 │   ├── app/                      # Next.js App Router
 │   │   ├── api/                  # API routes
 │   │   │   ├── copilotkit/       # CopilotKit runtime endpoint
-│   │   │   └── sheets/           # Google Sheets API endpoints
-│   │   │       ├── create/       # Create new sheet
-│   │   │       ├── import/       # Import from sheet
-│   │   │       ├── list/         # List sheet names
-│   │   │       └── sync/         # Sync canvas to sheet
+│   │   │   ├── sheets/           # Google Sheets API endpoints
+│   │   │   │   ├── create/       # Create new sheet
+│   │   │   │   ├── import/       # Import from sheet
+│   │   │   │   ├── list/         # List sheet names
+│   │   │   │   └── sync/         # Sync canvas to sheet
+│   │   │   └── docs/             # Google Docs API endpoints
+│   │   │       ├── create/       # Create new document
+│   │   │       ├── import/       # Import from document
+│   │   │       └── export/       # Export canvas to document
 │   │   ├── layout.tsx            # Root layout
 │   │   ├── page.tsx              # Main canvas page
 │   │   └── globals.css           # Global styles
@@ -62,7 +66,8 @@ This is a fullstack AI-powered canvas application built with **Next.js** (fronte
 │       ├── __init__.py           # Package initialization
 │       ├── agent.py              # LlamaIndex agent with tools
 │       ├── server.py             # FastAPI server setup
-│       └── sheets_integration.py # Google Sheets integration logic
+│       ├── sheets_integration.py # Google Sheets integration logic
+│       └── docs_integration.py   # Google Docs integration logic
 │
 ├── public/                       # Static assets
 ├── .env                          # Frontend environment variables
@@ -103,6 +108,12 @@ This is a fullstack AI-powered canvas application built with **Next.js** (fronte
 - **`import/route.ts`**: Imports data from Google Sheet to canvas
 - **`list/route.ts`**: Lists available sheet tabs/worksheets
 - **`sync/route.ts`**: Syncs canvas state to Google Sheet
+
+#### `src/app/api/docs/` (API Routes)
+**Responsibility:** Google Docs REST API endpoints
+- **`create/route.ts`**: Creates new Google Doc
+- **`import/route.ts`**: Imports data from Google Doc to canvas
+- **`export/route.ts`**: Exports canvas state to Google Doc
 
 #### `src/components/canvas/`
 **Responsibility:** Canvas-specific UI components
@@ -164,15 +175,16 @@ This is a fullstack AI-powered canvas application built with **Next.js** (fronte
   - These tools are executed on the frontend but the agent knows their schemas
 - **Backend tools**: Implements server-side tools
   - `list_sheet_names`: Lists available sheets in a spreadsheet
-  - Loads Composio tools dynamically (Google Sheets actions)
+  - `convert_doc_to_canvas`: Converts Google Doc to canvas format with import instructions
+  - Loads Composio tools dynamically (Google Sheets and Google Docs actions)
 - **System prompt**: Comprehensive instructions for agent behavior
   - Field schema documentation
   - Mutation/tool policy
-  - Google Sheets integration workflow
+  - Google Sheets and Google Docs integration workflows
   - Strict grounding rules (always use shared state as truth)
 - **Workflow router**: Creates `agentic_chat_router` with LlamaIndex's `get_ag_ui_workflow_router`
   - Integrates with CopilotKit runtime
-  - Manages agent state (items, globalTitle, syncSheetId, etc.)
+  - Manages agent state (items, globalTitle, syncSheetId, syncDocId, etc.)
 
 #### `agent/agent/server.py` (FastAPI Server)
 **Responsibility:** HTTP server and REST API endpoints
@@ -183,8 +195,12 @@ This is a fullstack AI-powered canvas application built with **Next.js** (fronte
   - **POST `/sync-to-sheets`**: Syncs canvas state to Google Sheets
   - **POST `/sheets/list`**: Lists available sheet names in a spreadsheet
   - **POST `/sheets/create`**: Creates a new Google Sheet
+- Provides REST endpoints for Google Docs operations:
+  - **POST `/docs/import`**: Imports Google Doc data to canvas format
+  - **POST `/docs/export`**: Exports canvas state to Google Docs
+  - **POST `/docs/create`**: Creates a new Google Doc
 - Handles request validation with Pydantic models
-- Extracts sheet IDs from URLs
+- Extracts sheet/document IDs from URLs
 
 #### `agent/agent/sheets_integration.py` (Google Sheets Integration)
 **Responsibility:** Bidirectional Google Sheets sync logic
@@ -208,6 +224,45 @@ This is a fullstack AI-powered canvas application built with **Next.js** (fronte
   - `determine_item_type()`: Infers card type from row content
   - `create_item_data()`: Builds card-specific data structures
   - `find_date_in_row()`, `extract_tags_from_row()`, `parse_numeric_value()`: Data extraction utilities
+
+#### `agent/agent/docs_integration.py` (Google Docs Integration)
+**Responsibility:** Bidirectional Google Docs sync logic
+- **`get_composio_client()`**: Initializes Composio client for Google Docs operations
+- **`get_document_content(doc_id)`**: Fetches Google Doc content via Composio
+  - Calls `GOOGLEDOCS_GET_DOCUMENT_BY_ID`
+  - Returns document structure with title, body, and raw data
+- **`extract_text_from_document(doc_data)`**: Extracts plain text from Google Docs structure
+  - Processes paragraphs, text runs, and tables
+  - Handles nested document elements
+  - Returns formatted plain text content
+- **`convert_document_to_canvas_items(doc_data, doc_id)`**: Converts Google Doc to canvas format
+  - Auto-detects document sections and headings
+  - Determines item types based on content analysis
+  - Creates structured canvas items with proper data fields
+  - Sets `syncDocId` for document tracking
+- **`parse_document_sections(text)`**: Parses plain text into logical sections
+  - Identifies headings and content blocks
+  - Handles various heading formats (markdown, numbered, etc.)
+  - Groups related content together
+- **`determine_section_type(section)`**: Infers canvas item type from section content
+  - Analyzes heading keywords and content patterns
+  - Returns appropriate type: project, entity, note, or chart
+- **`create_section_data(item_type, section)`**: Builds type-specific data structures
+  - Creates checklist items from bullet points for projects
+  - Extracts tags and metadata for entities
+  - Formats content appropriately for each card type
+- **`create_new_document(title)`**: Creates new Google Doc via Composio
+  - Calls `GOOGLEDOCS_CREATE_DOCUMENT`
+  - Returns document ID and URL
+- **`write_canvas_to_document(doc_id, canvas_state)`**: Exports canvas to Google Doc
+  - Converts canvas items to structured document format
+  - Handles different item types with appropriate formatting
+  - Uses `GOOGLEDOCS_UPDATE_EXISTING_DOCUMENT` for content insertion
+  - Preserves item hierarchy and formatting
+- **Helper functions**:
+  - Content analysis for type determination
+  - Text formatting and structure preservation
+  - Error handling for Composio API calls
 
 #### `agent/agent/__init__.py`
 **Responsibility:** Package initialization
@@ -247,6 +302,24 @@ Canvas state change → useEffect triggers debounced sync →
 Frontend calls /api/sheets/sync →
 Backend calls sync_canvas_to_sheet() →
 Composio API updates Google Sheet →
+Confirmation returned
+```
+
+### 5. Google Docs Import
+```
+User provides doc ID → Frontend calls /api/docs/import →
+Backend calls get_document_content() → Composio API calls →
+Google Docs API → Document data returned →
+convert_document_to_canvas_items() processes →
+Canvas state updated → Auto-sync enabled with syncDocId
+```
+
+### 6. Google Docs Export
+```
+User triggers export → Frontend calls /api/docs/export →
+Backend calls write_canvas_to_document() →
+Canvas items converted to document format →
+Composio API updates Google Doc →
 Confirmation returned
 ```
 
@@ -293,11 +366,12 @@ COPILOT_CLOUD_PUBLIC_API_KEY=""  # Optional: CopilotKit Cloud features
 
 ### Backend (`agent/.env`)
 ```
-OPENAI_API_KEY=""                      # Required: OpenAI API key
-COMPOSIO_API_KEY=""                    # Required: Composio API key
-COMPOSIO_GOOGLESHEETS_AUTH_CONFIG_ID="" # Required: Composio auth config
-COMPOSIO_USER_ID="default"             # Required: Composio user ID
-COMPOSIO_TOOL_IDS=""                   # Optional: Comma-separated tool IDs to load
+OPENAI_API_KEY=""                       # Required: OpenAI API key
+COMPOSIO_API_KEY=""                     # Required: Composio API key
+COMPOSIO_GOOGLESHEETS_AUTH_CONFIG_ID="" # Required: Composio auth config for Google Sheets
+COMPOSIO_GOOGLEDOCS_AUTH_CONFIG_ID=""   # Required: Composio auth config for Google Docs
+COMPOSIO_USER_ID="default"              # Required: Composio user ID
+COMPOSIO_TOOL_IDS=""                    # Optional: Comma-separated tool IDs to load
 ```
 
 ## Running the Application
@@ -332,6 +406,9 @@ The LlamaIndex agent can:
 - Auto-sync changes to Google Sheets
 - Create new Google Sheets
 - List available worksheets
+- Import from Google Docs
+- Export canvas to Google Docs
+- Create new Google Docs
 - Execute multi-step plans with progress tracking
 - Ask for user clarification when needed (HITL)
 
@@ -344,14 +421,19 @@ The LlamaIndex agent can:
 - `CopilotChat` / `CopilotPopup` provides chat UI
 
 ### Composio Integration
-- Dynamically loads Google Sheets tools via `COMPOSIO_TOOL_IDS`
-- Handles authentication via `COMPOSIO_GOOGLESHEETS_AUTH_CONFIG_ID`
+- Dynamically loads Google Sheets and Google Docs tools via `COMPOSIO_TOOL_IDS`
+- Handles authentication via `COMPOSIO_GOOGLESHEETS_AUTH_CONFIG_ID` and `COMPOSIO_GOOGLEDOCS_AUTH_CONFIG_ID`
 - Executes Google Sheets operations:
   - `GOOGLESHEETS_GET_SPREADSHEET_INFO`
   - `GOOGLESHEETS_BATCH_GET`
   - `GOOGLESHEETS_BATCH_UPDATE`
   - `GOOGLESHEETS_DELETE_DIMENSION`
   - `GOOGLESHEETS_CREATE_GOOGLE_SHEET1`
+- Executes Google Docs operations:
+  - `GOOGLEDOCS_GET_DOCUMENT_BY_ID`
+  - `GOOGLEDOCS_CREATE_DOCUMENT`
+  - `GOOGLEDOCS_UPDATE_EXISTING_DOCUMENT`
+- Common operations:
   - `COMPOSIO_CHECK_ACTIVE_CONNECTION`
   - `COMPOSIO_INITIATE_CONNECTION`
 

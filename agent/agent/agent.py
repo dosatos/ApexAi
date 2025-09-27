@@ -56,16 +56,44 @@ def list_sheet_names(sheet_id: Annotated[str, "Google Sheets ID to list availabl
     """List all available sheet names in a Google Spreadsheet."""
     try:
         from .sheets_integration import get_sheet_names
-        
+
         sheet_names = get_sheet_names(sheet_id)
         if not sheet_names:
             return f"Failed to get sheet names from {sheet_id}. Please check the ID and ensure the sheet is accessible."
-        
+
         return f"Available sheets in spreadsheet:\n" + "\n".join(f"- {name}" for name in sheet_names)
-        
+
     except Exception as e:
         return f"Error listing sheets from {sheet_id}: {str(e)}"
 
+def convert_doc_to_canvas(doc_id: Annotated[str, "Google Docs document ID to import from."]) -> str:
+    """Convert a Google Doc to canvas format and return instructions for creating canvas items."""
+    try:
+        from .docs_integration import get_document_content, convert_document_to_canvas_items
+
+        # Fetch document data
+        doc_data = get_document_content(doc_id)
+        if not doc_data:
+            return f"Failed to get document from {doc_id}. Please check the ID and ensure the document is accessible."
+
+        # Convert to canvas items
+        canvas_data = convert_document_to_canvas_items(doc_data, doc_id)
+
+        # Return instructions for the agent to execute
+        instructions = [f"Document '{canvas_data.get('globalTitle', 'Untitled')}' has been converted."]
+        instructions.append(f"Total items: {len(canvas_data.get('items', []))}")
+        instructions.append("To import this document:")
+        instructions.append(f"1. Call setGlobalTitle('{canvas_data.get('globalTitle', '')}') if needed")
+        instructions.append(f"2. Call setGlobalDescription('{canvas_data.get('globalDescription', '')}') if needed")
+        instructions.append(f"3. Call setSyncDocId('{doc_id}') if you want to enable doc tracking")
+
+        for idx, item in enumerate(canvas_data.get('items', [])):
+            instructions.append(f"4.{idx+1}. Create item: type='{item['type']}', name='{item['name']}', subtitle='{item.get('subtitle', '')}'")
+
+        return "\n".join(instructions)
+
+    except Exception as e:
+        return f"Error converting document {doc_id}: {str(e)}"
 
 
 # --- Frontend tool stubs (names/signatures only; execution happens in the UI) ---
@@ -286,9 +314,15 @@ _sheet_list_tool = FunctionTool.from_defaults(
     description="List all available sheet names in a Google Spreadsheet."
 )
 
+_doc_convert_tool = FunctionTool.from_defaults(
+    fn=convert_doc_to_canvas,
+    name="convert_doc_to_canvas",
+    description="Convert a Google Doc to canvas format and get instructions for creating canvas items."
+)
 
 _backend_tools = _load_composio_tools()
 _backend_tools.append(_sheet_list_tool)
+_backend_tools.append(_doc_convert_tool)
 print(f"Backend tools loaded: {len(_backend_tools)} tools")
 
 agentic_chat_router = get_ag_ui_workflow_router(
