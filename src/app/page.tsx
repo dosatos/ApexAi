@@ -983,6 +983,19 @@ export default function CopilotKitPage() {
   };
 
   // Google Drive Integration Functions
+  const isImportableMimeType = (mimeType: string): boolean => {
+    if (!mimeType) return false;
+
+    return (
+      mimeType.startsWith('text/') ||
+      mimeType === 'application/json' ||
+      mimeType === 'application/javascript' ||
+      mimeType === 'application/xml' ||
+      mimeType === 'application/vnd.google-apps.document' ||
+      mimeType === 'application/vnd.google-apps.spreadsheet'
+    );
+  };
+
   const loadDriveFiles = async () => {
     setIsLoadingFiles(true);
     setDriveError("");
@@ -1005,7 +1018,10 @@ export default function CopilotKitPage() {
 
       const result = await response.json();
       if (result.success) {
-        setDriveFiles(result.files || []);
+        const importableFiles = (result.files || []).filter((file: any) =>
+          isImportableMimeType(file.mimeType)
+        );
+        setDriveFiles(importableFiles);
       } else {
         throw new Error(result.error || 'Failed to load Drive files');
       }
@@ -1046,7 +1062,10 @@ export default function CopilotKitPage() {
 
       const result = await response.json();
       if (result.success) {
-        setDriveFiles(result.files || []);
+        const importableFiles = (result.files || []).filter((file: any) =>
+          isImportableMimeType(file.mimeType)
+        );
+        setDriveFiles(importableFiles);
       } else {
         throw new Error(result.error || 'Failed to search Drive files');
       }
