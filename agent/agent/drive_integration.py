@@ -111,7 +111,7 @@ def get_file_content(file_id: str) -> Optional[Dict[str, Any]]:
             print(f"Failed to get file metadata: {metadata_result}")
             return None
 
-        file_metadata = metadata_result.get("data", {}).get("response_data", {})
+        file_metadata = metadata_result.get("data", {})
         mime_type = file_metadata.get("mimeType", "")
         file_name = file_metadata.get("name", "Unknown File")
 
@@ -124,42 +124,64 @@ def get_file_content(file_id: str) -> Optional[Dict[str, Any]]:
             "application/xml"
         ]:
             # Download as text for text files
+            print(f"Attempting to download text file: {file_name}")
             content_result = composio.tools.execute(
                 user_id=user_id,
                 slug="GOOGLEDRIVE_DOWNLOAD_FILE",
-                arguments={"fileId": file_id}
+                arguments={"file_id": file_id}
             )
 
+            print(f"Download result for {file_name}: {content_result}")
+
             if content_result and content_result.get("successful"):
-                content_data = content_result.get("data", {}).get("response_data", {})
-                content = content_data.get("content", "")
+                content_data = content_result.get("data", {})
+                downloaded_file_path = content_data.get("downloaded_file_content", "")
+
+                # Read the downloaded file
+                content = ""
+                if downloaded_file_path and os.path.exists(downloaded_file_path):
+                    try:
+                        with open(downloaded_file_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        print(f"Successfully read {len(content)} characters from downloaded file: {downloaded_file_path}")
+                    except Exception as e:
+                        print(f"Error reading downloaded file {downloaded_file_path}: {e}")
+                        content = content_data.get("content", "")  # Fallback to direct content if available
+                else:
+                    content = content_data.get("content", "")  # Fallback to direct content
+
+                print(f"Successfully extracted {len(content)} characters from {file_name}")
 
                 return {
-                    "file_id": file_id,
+                    "fileId": file_id,
                     "name": file_name,
                     "mime_type": mime_type,
                     "content": content,
                     "content_type": "text",
                     "metadata": file_metadata
                 }
+            else:
+                print(f"Failed to download file {file_name}: {content_result}")
+                return None
 
         elif mime_type == "application/vnd.google-apps.document":
             # Export Google Docs as plain text
             export_result = composio.tools.execute(
                 user_id=user_id,
-                slug="GOOGLEDRIVE_EXPORT_FILE",
+                slug="GOOGLEDRIVE_PARSE_FILE",
                 arguments={
-                    "fileId": file_id,
-                    "mimeType": "text/plain"
+                    "file_id": file_id,
+                    "mime_type": "text/plain"
                 }
             )
 
             if export_result and export_result.get("successful"):
-                content_data = export_result.get("data", {}).get("response_data", {})
+                content_data = export_result.get("data", {})
                 content = content_data.get("content", "")
+                print(f"Successfully exported {len(content)} characters from Google Doc: {file_name}")
 
                 return {
-                    "file_id": file_id,
+                    "fileId": file_id,
                     "name": file_name,
                     "mime_type": mime_type,
                     "content": content,
@@ -171,19 +193,20 @@ def get_file_content(file_id: str) -> Optional[Dict[str, Any]]:
             # Export Google Sheets as CSV
             export_result = composio.tools.execute(
                 user_id=user_id,
-                slug="GOOGLEDRIVE_EXPORT_FILE",
+                slug="GOOGLEDRIVE_PARSE_FILE",
                 arguments={
-                    "fileId": file_id,
-                    "mimeType": "text/csv"
+                    "file_id": file_id,
+                    "mime_type": "text/csv"
                 }
             )
 
             if export_result and export_result.get("successful"):
-                content_data = export_result.get("data", {}).get("response_data", {})
+                content_data = export_result.get("data", {})
                 content = content_data.get("content", "")
+                print(f"Successfully exported {len(content)} characters from Google Sheet: {file_name}")
 
                 return {
-                    "file_id": file_id,
+                    "fileId": file_id,
                     "name": file_name,
                     "mime_type": mime_type,
                     "content": content,
