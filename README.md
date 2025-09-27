@@ -5,6 +5,8 @@ Welcome to the Fullstack Agents hackathon! This starter gives you a complete AI-
 ## About this starter
 This is a starter template for building AI-powered canvas applications using LlamaIndex, CopilotKit, and Composio. It provides a modern Next.js application with an integrated LlamaIndex agent that manages a visual canvas of interactive cards with real-time AI synchronization and external tool integrations (Google Sheets, for this example) through Composio.
 
+This is an example application that we built to help you get started quickly. Everything you see can be customized, replaced, augmented or built upon.
+
 https://github.com/user-attachments/assets/2a4ec718-b83b-4968-9cbe-7c1fe082e958
 
 ### LlamaIndex
