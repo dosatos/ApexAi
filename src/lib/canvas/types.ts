@@ -5,6 +5,7 @@ export interface DocumentData {
   createdAt?: string; // creation timestamp
   modifiedAt?: string; // last modification timestamp
   wordCount?: number; // word count for the document
+  googleDocsId?: string; // Google Docs document ID if synced
 }
 
 export type ItemData = DocumentData;

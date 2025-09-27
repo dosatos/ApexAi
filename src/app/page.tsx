@@ -24,7 +24,7 @@ export default function CopilotKitPage() {
     name: "sample_agent",
     initialState,
   });
-  
+
 
   // Global cache for the last non-empty agent state
   const cachedStateRef = useRef<AgentState>(state ?? initialState);
@@ -58,7 +58,7 @@ export default function CopilotKitPage() {
 
   useEffect(() => {
     console.log("[CoAgent state updated]", state);
-    
+
     // Auto-sync to Google Sheets if syncSheetId is present
     const autoSyncToSheets = async () => {
       console.log("[AUTO-SYNC] Checking sync conditions:", {
@@ -66,15 +66,15 @@ export default function CopilotKitPage() {
         syncSheetId: state?.syncSheetId,
         itemsLength: state?.items?.length || 0
       });
-      
+
       if (!state || !state.syncSheetId) {
         console.log("[AUTO-SYNC] Skipping - no sheet configured");
         return; // No sync needed - no sheet configured
       }
-      
+
       try {
         console.log(`[AUTO-SYNC] Syncing ${state.items?.length || 0} items to sheet: ${state.syncSheetId}`);
-        
+
         const response = await fetch('/api/sheets/sync', {
           method: 'POST',
           headers: {
@@ -296,7 +296,7 @@ export default function CopilotKitPage() {
       if (Array.isArray(anyPrev.field3)) {
         const selected = new Set<string>(anyPrev.field3 ?? []);
         if (selected.has(tag)) selected.delete(tag); else selected.add(tag);
-        return { ...anyPrev, field3: Array.from(selected) } as ItemData;
+        return { ...prev, field3: Array.from(selected) };
       }
       return prev;
     });
@@ -517,7 +517,7 @@ export default function CopilotKitPage() {
       }
 
       setImportError("");
-      
+
       // Make API call to list available sheets
       const response = await fetch('/api/sheets/list', {
         method: 'POST',
@@ -538,7 +538,7 @@ export default function CopilotKitPage() {
         const error = await response.json();
         setImportError(`Failed to list sheets: ${error.error}`);
       }
-      
+
     } catch (error) {
       console.error('Error fetching sheets:', error);
       setImportError("Failed to fetch available sheets");
@@ -572,7 +572,7 @@ export default function CopilotKitPage() {
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ 
+            body: JSON.stringify({
               sheet_id: cleanSheetId,
               sheet_name: sheetName || selectedSheetName || undefined,
               preview_only: true
@@ -581,14 +581,14 @@ export default function CopilotKitPage() {
 
           if (previewResponse.ok) {
             const previewResult = await previewResponse.json();
-            
+
             // Check if the sheet has a different format than canvas
             const hasCanvasFormat = viewState.items.some(item =>
               item.type && item.type === 'document'
             );
-            
+
             const sheetHasData = previewResult.data && previewResult.data.items && previewResult.data.items.length > 0;
-            
+
             if (hasCanvasFormat && sheetHasData) {
               // Show format warning
               setFormatWarningDetails({
@@ -614,7 +614,7 @@ export default function CopilotKitPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           sheet_id: cleanSheetId,
           sheet_name: sheetName || selectedSheetName || undefined
         }),
@@ -626,7 +626,7 @@ export default function CopilotKitPage() {
       }
 
       const result = await response.json();
-      
+
       if (result.success && result.data) {
         // Update the canvas state with imported data
         console.log("Import result data:", result.data);
@@ -637,7 +637,7 @@ export default function CopilotKitPage() {
       } else {
         throw new Error(result.message || 'Failed to process sheet data');
       }
-      
+
     } catch (error) {
       console.error('Import error:', error);
       setImportError(error instanceof Error ? error.message : 'Failed to import sheet');
@@ -671,17 +671,17 @@ export default function CopilotKitPage() {
 
       const result = await response.json();
       console.log("Create sheet result:", result);
-      
+
       if (result.success) {
         const sheetId = result.sheet_id;
         const sheetUrl = result.sheet_url;
-        
+
         if (!sheetId) {
           console.warn("Sheet creation succeeded but no sheet_id returned");
           setImportError("Sheet was created but ID not returned. Check your Google Drive.");
           return;
         }
-        
+
         // If we have existing items, sync them to the new sheet first, then set up for bi-directional sync
         if (viewState.items && viewState.items.length > 0) {
           try {
@@ -722,7 +722,7 @@ export default function CopilotKitPage() {
               headers: {
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify({ 
+              body: JSON.stringify({
                 sheet_id: sheetId,
                 sheet_name: "Sheet1"
               }),
@@ -745,7 +745,7 @@ export default function CopilotKitPage() {
           } catch (importError) {
             console.warn("Failed to import new sheet structure:", importError);
             // Fallback: just set sync info and update title/description
-            setState((prev) => ({ 
+            setState((prev) => ({
               ...initialState,
               ...prev,
               globalTitle: result.title || title.trim(),
@@ -755,20 +755,20 @@ export default function CopilotKitPage() {
             }));
           }
         }
-        
+
         setShowSheetModal(false);
         setImportError("");
         console.log("Successfully created new sheet:", result.message);
-        
+
         // Show success message or provide link
         if (sheetUrl) {
           window.open(sheetUrl, '_blank');
         }
-        
+
       } else {
         throw new Error('Failed to create sheet: ' + (result.error || result.message || 'Unknown error'));
       }
-      
+
     } catch (error) {
       console.error('Create sheet error:', error);
       setImportError(error instanceof Error ? error.message : 'Failed to create sheet');
@@ -885,6 +885,16 @@ export default function CopilotKitPage() {
 
             if (exportResponse.ok) {
               console.log("Successfully exported canvas to new document");
+
+              // Store the Google Docs ID in all exported items
+              viewState.items.forEach(item => {
+                if (item.type === 'document') {
+                  updateItemData(item.id, (prev) => ({
+                    ...prev,
+                    googleDocsId: docId
+                  }));
+                }
+              });
             } else {
               console.warn("Failed to export canvas to new document");
             }
@@ -957,6 +967,17 @@ export default function CopilotKitPage() {
 
       if (result.success) {
         console.log("Successfully exported to document:", result.message);
+
+        // Store the Google Docs ID in all exported items
+        viewState.items?.forEach(item => {
+          if (item.type === 'document') {
+            updateItemData(item.id, (prev) => ({
+              ...prev,
+              googleDocsId: cleanDocId
+            }));
+          }
+        });
+
         setShowDocModal(false);
         setDocImportError("");
       } else {
@@ -968,6 +989,76 @@ export default function CopilotKitPage() {
       setDocImportError(error instanceof Error ? error.message : 'Failed to export to document');
     } finally {
       setIsExportingDoc(false);
+    }
+  };
+
+  const saveItemToGoogleDocs = async (itemId: string) => {
+    const item = viewState.items?.find(i => i.id === itemId);
+    if (!item) {
+      console.error("Item not found:", itemId);
+      return;
+    }
+
+    const itemData = item.data as DocumentData;
+    const hasGoogleDocsId = Boolean(itemData.googleDocsId);
+
+    try {
+      if (hasGoogleDocsId) {
+        // Update existing document with item content
+        const response = await fetch('/api/docs/update-with-item', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            doc_id: itemData.googleDocsId,
+            item: item,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.details || errorData.error || 'Failed to update document');
+        }
+
+        const result = await response.json();
+        if (result.success) {
+          console.log("Successfully updated document:", result.message);
+        } else {
+          throw new Error(result.message || 'Failed to update document');
+        }
+      } else {
+        // Create new document with content in one step
+        const response = await fetch('/api/docs/create-with-item', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ item }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.details || errorData.error || 'Failed to create document');
+        }
+
+        const result = await response.json();
+
+        if (result.success && result.doc_id) {
+          // Store the Google Docs ID in the item
+          updateItemData(itemId, (prev) => ({
+            ...prev,
+            googleDocsId: result.doc_id
+          }));
+
+          console.log("Successfully created new document with content");
+        } else {
+          throw new Error(result.message || 'Failed to create document');
+        }
+      }
+    } catch (error) {
+      console.error('Save error:', error);
+      // You might want to show an error toast or notification here
     }
   };
 
@@ -990,10 +1081,10 @@ export default function CopilotKitPage() {
       { name: "sheetId", type: "string", required: true, description: "The Google Sheet ID to sync with." },
     ],
     handler: ({ sheetId }: { sheetId: string }) => {
-      setState((prev) => ({ 
-        ...initialState, 
-        ...prev, 
-        syncSheetId: sheetId 
+      setState((prev) => ({
+        ...initialState,
+        ...prev,
+        syncSheetId: sheetId
       }));
       return `sync_sheet_set:${sheetId}`;
     },
@@ -1019,14 +1110,14 @@ export default function CopilotKitPage() {
       if (!viewState.syncSheetId) {
         return "No sync sheet ID configured. Please set a sheet ID first.";
       }
-      
+
       if (!viewState.items || viewState.items.length === 0) {
         return "No items to sync. Canvas is empty.";
       }
 
       try {
         console.log(`[MANUAL-SYNC] Syncing ${viewState.items.length} items to sheet: ${viewState.syncSheetId}`);
-        
+
         const response = await fetch('/api/sheets/sync', {
           method: 'POST',
           headers: {
@@ -1065,7 +1156,7 @@ export default function CopilotKitPage() {
 
       try {
         console.log(`[FORCE-SYNC] Syncing ${viewState.items.length} items to sheet: ${sheetId}`);
-        
+
         const response = await fetch('/api/sheets/sync', {
           method: 'POST',
           headers: {
@@ -1148,7 +1239,7 @@ export default function CopilotKitPage() {
                 labels={{
                   title: "Agent",
                   initial:
-                    "👋 Share your ideas or ask me to help with document creation. Changes will sync with the canvas in real time.",
+                    "👋 Let's develop your investment thesis together. Share your research, ask questions about market analysis, or request help with due diligence documentation.",
                 }}
                 suggestions={[
                   {
@@ -1189,7 +1280,7 @@ export default function CopilotKitPage() {
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                       setState((prev) => ({ ...(prev ?? initialState), globalTitle: e.target.value }))
                     }
-                    placeholder="Canvas title..."
+                    placeholder="Investment thesis..."
                     className={cn(titleClasses, "text-2xl font-semibold")}
                   />
                   <input
@@ -1199,12 +1290,12 @@ export default function CopilotKitPage() {
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                       setState((prev) => ({ ...(prev ?? initialState), globalDescription: e.target.value }))
                     }
-                    placeholder="Canvas description..."
+                    placeholder="Investment thesis description..."
                     className={cn(titleClasses, "mt-2 text-sm leading-6 resize-none overflow-hidden")}
                   />
                 </motion.div>
               )}
-              
+
               {(viewState.items ?? []).length === 0 ? (
                 <EmptyState className="flex-1">
                   <div className="mx-auto max-w-lg text-center">
@@ -1242,8 +1333,10 @@ export default function CopilotKitPage() {
                             name={item.name}
                             subtitle={item.subtitle}
                             description={""}
+                            data={item.data as DocumentData}
                             onNameChange={(v) => updateItem(item.id, { name: v })}
                             onSubtitleChange={(v) => updateItem(item.id, { subtitle: v })}
+                            onSave={() => saveItemToGoogleDocs(item.id)}
                           />
 
                           <div className="mt-6">

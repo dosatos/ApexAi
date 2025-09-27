@@ -123,55 +123,49 @@ def extract_text_from_document(doc_data: Dict[str, Any]) -> str:
 
 def convert_document_to_canvas_items(doc_data: Dict[str, Any], doc_id: str = "") -> Dict[str, Any]:
     """
-    Convert Google Doc content to canvas format.
+    Convert Google Doc content to canvas format as a single document item.
 
     Args:
         doc_data: Data returned from get_document_content()
         doc_id: The document ID
 
     Returns:
-        Dictionary with canvas state structure
+        Dictionary with canvas state structure containing one document item
     """
     if not doc_data:
         return {
             "items": [],
             "globalTitle": "Empty Document",
-            "globalDescription": "No content found",
-            "syncDocId": doc_id,
+            "globalDescription": "",
+            "itemsCreated": 0,
         }
 
     title = doc_data.get("title", "Untitled Document")
     text_content = extract_text_from_document(doc_data)
 
-    if not text_content:
-        return {
-            "items": [],
-            "globalTitle": title,
-            "globalDescription": "Document is empty",
-            "syncDocId": doc_id,
+    print(f"Converting Google Doc: '{title}' to canvas")
+    print(f"Content length: {len(text_content)} characters")
+
+    # Create a single document item with the full content
+    item = {
+        "id": "0001",
+        "type": "document",
+        "name": title,  # Use Google Doc title as card name
+        "subtitle": "",  # Remove description as requested
+        "data": {
+            "content": text_content,  # Full document content
+            "createdAt": doc_data.get("createdTime", ""),
+            "modifiedAt": doc_data.get("modifiedTime", ""),
+            "wordCount": len(text_content.split()) if text_content else 0,
+            "googleDocsId": doc_id  # Store the Google Docs ID
         }
-
-    sections = parse_document_sections(text_content)
-
-    items = []
-    for idx, section in enumerate(sections):
-        section_type = determine_section_type(section)
-
-        item = {
-            "id": str(idx + 1).zfill(4),
-            "type": section_type,
-            "name": section.get("heading", f"Section {idx + 1}"),
-            "subtitle": section.get("subtitle", ""),
-            "data": create_section_data(section_type, section)
-        }
-
-        items.append(item)
+    }
 
     return {
-        "items": items,
-        "globalTitle": title,
-        "globalDescription": f"Imported from Google Docs • {len(items)} sections",
-        "syncDocId": doc_id,
+        "items": [item],  # Only one item
+        "globalTitle": f"Canvas: {title}",
+        "globalDescription": "",  # No global description
+        "itemsCreated": 1,
     }
 
 
@@ -322,12 +316,13 @@ def create_section_data(item_type: str, section: Dict[str, Any]) -> Dict[str, An
     return {"field1": content}
 
 
-def create_new_document(title: str = "Canvas Export") -> Dict[str, Any]:
+def create_new_document(title: str = "Canvas Export", markdown_content: str = "") -> Dict[str, Any]:
     """
-    Create a new Google Doc.
+    Create a new Google Doc with markdown content.
 
     Args:
         title: Title for the new document
+        markdown_content: Initial markdown content for the document
 
     Returns:
         Dictionary with new document info
@@ -339,10 +334,10 @@ def create_new_document(title: str = "Canvas Export") -> Dict[str, Any]:
     try:
         result = composio.tools.execute(
             user_id=user_id,
-            slug="GOOGLEDOCS_CREATE_DOCUMENT",
+            slug="GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN",
             arguments={
                 "title": title,
-                "text": ""
+                "markdown_text": markdown_content
             }
         )
 
@@ -373,6 +368,120 @@ def create_new_document(title: str = "Canvas Export") -> Dict[str, Any]:
         return {
             "success": False,
             "error": f"Exception during document creation: {str(e)}"
+        }
+
+
+def create_document_with_item_content(item: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Create a new Google Doc with content from a single canvas item.
+
+    Args:
+        item: Canvas item with type, name, subtitle, and data
+
+    Returns:
+        Dictionary with new document info
+    """
+    title = item.get("name", "Untitled Document")
+    subtitle = item.get("subtitle", "")
+    item_data = item.get("data", {})
+
+    print(f"Creating document for item: {title}")
+    print(f"Item data: {item_data}")
+
+    # Build markdown content for the item
+    content_parts = []
+    content_parts.append(f"# {title}\n\n")
+
+    if subtitle:
+        content_parts.append(f"*{subtitle}*\n\n")
+
+    # Get the main content based on item type
+    if item.get("type") == "document":
+        content = item_data.get("content", "")
+        print(f"Document content found: '{content}'")
+        if content:
+            content_parts.append(f"{content}\n\n")
+        else:
+            content_parts.append("*No content yet*\n\n")
+
+    markdown_content = "".join(content_parts)
+    print(f"Final markdown content: {markdown_content}")
+
+    # Create the document with markdown content
+    return create_new_document(title, markdown_content)
+
+
+def update_document_with_item_content(doc_id: str, item: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Update a Google Doc with content from a single canvas item.
+
+    Args:
+        doc_id: Google Docs document ID
+        item: Canvas item with type, name, subtitle, and data
+
+    Returns:
+        Dictionary with update result status
+    """
+    composio, user_id = get_composio_client()
+    if not composio or not user_id:
+        return {"success": False, "error": "Failed to initialize Composio client"}
+
+    try:
+        title = item.get("name", "Untitled Document")
+        subtitle = item.get("subtitle", "")
+        item_data = item.get("data", {})
+
+        print(f"Updating document {doc_id} for item: {title}")
+        print(f"Item data: {item_data}")
+
+        # Build markdown content for the item
+        content_parts = []
+        content_parts.append(f"# {title}\n\n")
+
+        if subtitle:
+            content_parts.append(f"*{subtitle}*\n\n")
+
+        # Get the main content based on item type
+        if item.get("type") == "document":
+            content = item_data.get("content", "")
+            print(f"Document content found: '{content}'")
+            if content:
+                content_parts.append(f"{content}\n\n")
+            else:
+                content_parts.append("*No content yet*\n\n")
+
+        full_content = "".join(content_parts)
+        print(f"Final markdown content: {full_content}")
+
+        # Use UPDATE_DOCUMENT_MARKDOWN to replace entire content
+        result = composio.tools.execute(
+            user_id=user_id,
+            slug="GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN",
+            arguments={
+                "document_id": doc_id,
+                "new_markdown_text": full_content
+            }
+        )
+
+        print(f"Update result: {result}")
+
+        if result and result.get("successful"):
+            return {
+                "success": True,
+                "message": f"Updated document with item content: {title}",
+                "doc_id": doc_id
+            }
+        else:
+            error_msg = result.get("error", "Unknown error") if result else "No response"
+            return {
+                "success": False,
+                "error": f"Failed to update Google Doc: {error_msg}"
+            }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Exception during document update: {str(e)}"
         }
 
 
@@ -447,25 +556,13 @@ def write_canvas_to_document(doc_id: str, canvas_state: Dict[str, Any]) -> Dict[
 
         full_content = "".join(content_parts)
 
-        # Use UPDATE_EXISTING_DOCUMENT with proper edit structure
-        # First, we need to insert text at the beginning
-        edit_requests = [
-            {
-                "insertText": {
-                    "location": {
-                        "index": 1
-                    },
-                    "text": full_content
-                }
-            }
-        ]
-
+        # Use UPDATE_DOCUMENT_MARKDOWN to replace entire content
         result = composio.tools.execute(
             user_id=user_id,
-            slug="GOOGLEDOCS_UPDATE_EXISTING_DOCUMENT",
+            slug="GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN",
             arguments={
                 "document_id": doc_id,
-                "editDocs": edit_requests
+                "new_markdown_text": full_content
             }
         )
 

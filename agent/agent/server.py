@@ -29,7 +29,7 @@ _load_env_files()
 
 from .agent import agentic_chat_router
 from .sheets_integration import get_sheet_data, convert_sheet_to_canvas_items, sync_canvas_to_sheet, get_sheet_names, create_new_sheet
-from .docs_integration import get_document_content, convert_document_to_canvas_items, create_new_document, write_canvas_to_document
+from .docs_integration import get_document_content, convert_document_to_canvas_items, create_new_document, write_canvas_to_document, create_document_with_item_content, update_document_with_item_content
 
 app = FastAPI()
 app.include_router(agentic_chat_router)
@@ -56,6 +56,13 @@ class DocExportRequest(BaseModel):
 
 class CreateDocRequest(BaseModel):
     title: str
+
+class CreateDocWithItemRequest(BaseModel):
+    item: dict
+
+class UpdateDocWithItemRequest(BaseModel):
+    doc_id: str
+    item: dict
 
 # Sheets sync endpoint
 @app.post("/sheets/sync")
@@ -354,6 +361,84 @@ async def export_to_doc(request: DocExportRequest):
         raise
     except Exception as e:
         print(f"Error in canvas-to-docs export: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+@app.post("/docs/create-with-item")
+async def create_doc_with_item(request: CreateDocWithItemRequest):
+    """
+    Create a new Google Doc with content from a canvas item.
+
+    Args:
+        request: Contains item data with type, name, subtitle, and content
+
+    Returns:
+        New doc details including doc_id and URL
+    """
+    try:
+        item_name = request.item.get("name", "Untitled Document")
+        print(f"Creating new doc with item content: {item_name}")
+
+        # Create new doc with item content using Composio
+        result = create_document_with_item_content(request.item)
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("error", "Failed to create new document with item content")
+            )
+
+        return JSONResponse(content={
+            "success": True,
+            "doc_id": result.get("doc_id"),
+            "doc_url": result.get("doc_url"),
+            "title": result.get("title"),
+            "message": f"Successfully created new document '{item_name}' with content"
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error creating document with item: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+@app.post("/docs/update-with-item")
+async def update_doc_with_item(request: UpdateDocWithItemRequest):
+    """
+    Update an existing Google Doc with content from a canvas item.
+
+    Args:
+        request: Contains doc_id and item data with type, name, subtitle, and content
+
+    Returns:
+        Update result status
+    """
+    try:
+        item_name = request.item.get("name", "Untitled Document")
+        print(f"Updating doc {request.doc_id} with item content: {item_name}")
+
+        # Update doc with item content using Composio
+        result = update_document_with_item_content(request.doc_id, request.item)
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("error", "Failed to update document with item content")
+            )
+
+        return JSONResponse(content={
+            "success": True,
+            "doc_id": result.get("doc_id"),
+            "message": result.get("message", f"Successfully updated document '{item_name}' with content")
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error updating document with item: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Internal server error: {str(e)}"

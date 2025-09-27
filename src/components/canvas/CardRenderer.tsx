@@ -41,7 +41,7 @@ export function CardRenderer(props: {
       <TextareaAutosize
         value={documentData.content || ""}
         onChange={(e) => updateContent(e.target.value)}
-        placeholder="Start writing your document..."
+        placeholder="Start writing your investment document..."
         className="min-h-[300px] w-full resize-none border-0 bg-transparent p-0 text-base leading-7 outline-none placeholder:text-gray-400 focus:ring-0"
         minRows={12}
       />

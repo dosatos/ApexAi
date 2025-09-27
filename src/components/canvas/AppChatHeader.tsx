@@ -15,7 +15,7 @@ export function AppChatHeader({ onClose }: { onClose?: () => void }) {
             </AvatarFallback>
           </Avatar>
           <div>
-            <h3 className="font-bold text-sidebar-foreground">CopilotKit Canvas</h3>
+            <h3 className="font-bold text-sidebar-foreground">Apex Investment Copilot</h3>
             <div className="flex items-center gap-x-1.5 text-xs text-muted-foreground">
               <div className="inline-block size-1.5 rounded-full bg-green-500" />
               <div>Online <span className="opacity-50 text-[90%] select-none">•</span> Ready to help</div>
@@ -37,7 +37,7 @@ export function AppChatHeader({ onClose }: { onClose?: () => void }) {
   );
 }
 
-export function PopupHeader({}: HeaderProps) {
+export function PopupHeader({ }: HeaderProps) {
   const { setOpen } = useChatContext();
   return <AppChatHeader onClose={() => setOpen(false)} />;
 }
