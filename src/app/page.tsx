@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type React from "react";
 import { Button } from "@/components/ui/button"
 import AppChatHeader, { PopupHeader } from "@/components/canvas/AppChatHeader";
-import { X } from "lucide-react"
+import { X, Plus } from "lucide-react"
 import CardRenderer from "@/components/canvas/CardRenderer";
 import ShikiHighlighter from "react-shiki/web";
 import { motion, useScroll, useTransform, useMotionValueEvent } from "motion/react";
@@ -797,9 +797,45 @@ export default function CopilotKitPage() {
       const result = await response.json();
 
       if (result.success && result.data) {
-        // Update the canvas state with imported data
+        // Merge imported documents with existing state instead of replacing
         console.log("Import result data:", result.data);
-        setState(result.data);
+
+        setState((prev) => {
+          const currentState = prev ?? initialState;
+          const importedState = result.data;
+          const importedItems = importedState.items || [];
+
+          if (importedItems.length === 0) {
+            console.log("No items found in imported document");
+            return currentState;
+          }
+
+          // Generate new IDs for imported items to avoid conflicts
+          const existingItems = currentState.items || [];
+          const maxExisting = existingItems.reduce((max, item) => {
+            const parsed = Number.parseInt(String(item.id ?? "0"), 10);
+            return Number.isFinite(parsed) ? Math.max(max, parsed) : max;
+          }, 0);
+          const priorCount = Number.isFinite(currentState.itemsCreated) ? (currentState.itemsCreated as number) : 0;
+          let nextNumber = Math.max(priorCount, maxExisting);
+
+          // Assign new IDs to imported items
+          const newItems = importedItems.map((item: Item) => ({
+            ...item,
+            id: String(++nextNumber).padStart(4, "0")
+          }));
+
+          // Merge with existing items
+          const mergedItems = [...existingItems, ...newItems];
+
+          return {
+            ...currentState,
+            items: mergedItems,
+            itemsCreated: nextNumber,
+            lastAction: `imported:${newItems.length}_documents`
+          };
+        });
+
         setShowDocModal(false);
         setDocImportError("");
         console.log("Successfully imported document data:", result.message);
@@ -1119,6 +1155,21 @@ export default function CopilotKitPage() {
                     className={cn(titleClasses, "mt-2 text-sm leading-6 resize-none overflow-hidden")}
                   />
                 </motion.div>
+              )}
+
+              {/* Add Documents Button - shown when there are existing items */}
+              {!showJsonView && (viewState.items ?? []).length > 0 && (
+                <div className="mb-6 flex justify-center">
+                  <Button
+                    onClick={() => setShowDocModal(true)}
+                    variant="outline"
+                    size="default"
+                    className="gap-2 text-base font-semibold bg-card rounded-lg hover:bg-accent/10 border-2 border-dashed border-border/70 hover:border-accent/40 transition-colors"
+                  >
+                    <Plus className="size-5" />
+                    Add Documents
+                  </Button>
+                </div>
               )}
 
               {(viewState.items ?? []).length === 0 ? (
