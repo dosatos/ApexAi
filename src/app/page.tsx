@@ -486,11 +486,7 @@ export default function CopilotKitPage() {
   const [showDocModal, setShowDocModal] = useState<boolean>(false);
   const [isImportingDoc, setIsImportingDoc] = useState<boolean>(false);
   const [docImportError, setDocImportError] = useState<string>("");
-  const [isCreatingDoc, setIsCreatingDoc] = useState<boolean>(false);
-  const [newDocTitle, setNewDocTitle] = useState<string>("");
-  const [isExportingDoc, setIsExportingDoc] = useState<boolean>(false);
   const [docId, setDocId] = useState<string>("");
-  const [exportDocId, setExportDocId] = useState<string>("");
 
   const fetchAvailableSheets = async (sheetId: string) => {
     try {
@@ -819,164 +815,7 @@ export default function CopilotKitPage() {
     }
   };
 
-  const createNewDoc = async (title: string) => {
-    if (!title.trim()) {
-      setDocImportError("Please enter a valid document title");
-      return;
-    }
 
-    setIsCreatingDoc(true);
-    setDocImportError("");
-
-    try {
-      const response = await fetch('/api/docs/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ title: title.trim() }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.details || errorData.error || 'Failed to create document');
-      }
-
-      const result = await response.json();
-      console.log("Create doc result:", result);
-
-      if (result.success) {
-        const docId = result.doc_id;
-        const docUrl = result.doc_url;
-
-        if (!docId) {
-          console.warn("Document creation succeeded but no doc_id returned");
-          setDocImportError("Document was created but ID not returned. Check your Google Drive.");
-          return;
-        }
-
-        // Export current canvas to the new doc if we have items
-        if (viewState.items && viewState.items.length > 0) {
-          try {
-            const exportResponse = await fetch('/api/docs/export', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                canvas_state: viewState,
-                doc_id: docId,
-              }),
-            });
-
-            if (exportResponse.ok) {
-              console.log("Successfully exported canvas to new document");
-
-              // Store the Google Docs ID in all exported items
-              viewState.items.forEach(item => {
-                if (item.type === 'document') {
-                  updateItemData(item.id, (prev) => ({
-                    ...prev,
-                    googleDocsId: docId
-                  }));
-                }
-              });
-            } else {
-              console.warn("Failed to export canvas to new document");
-            }
-          } catch (exportError) {
-            console.warn("Failed to export canvas to new document:", exportError);
-          }
-        }
-
-        setShowDocModal(false);
-        setDocImportError("");
-        console.log("Successfully created new document:", result.message);
-
-        // Show success message and open doc
-        if (docUrl) {
-          window.open(docUrl, '_blank');
-        }
-
-      } else {
-        throw new Error('Failed to create document: ' + (result.error || result.message || 'Unknown error'));
-      }
-
-    } catch (error) {
-      console.error('Create document error:', error);
-      setDocImportError(error instanceof Error ? error.message : 'Failed to create document');
-    } finally {
-      setIsCreatingDoc(false);
-    }
-  };
-
-  const exportToDoc = async (docId: string) => {
-    if (!docId.trim()) {
-      setDocImportError("Please enter a valid Document ID");
-      return;
-    }
-
-    if (!viewState.items || viewState.items.length === 0) {
-      setDocImportError("No items to export. Canvas is empty.");
-      return;
-    }
-
-    setIsExportingDoc(true);
-    setDocImportError("");
-
-    try {
-      // Extract doc ID from URL if needed
-      let cleanDocId = docId.trim();
-      if (cleanDocId.includes("/document/d/")) {
-        const start = cleanDocId.indexOf("/document/d/") + "/document/d/".length;
-        const end = cleanDocId.indexOf("/", start);
-        cleanDocId = cleanDocId.substring(start, end === -1 ? undefined : end);
-      }
-
-      const response = await fetch('/api/docs/export', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          canvas_state: viewState,
-          doc_id: cleanDocId,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.details || errorData.error || 'Failed to export to document');
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
-        console.log("Successfully exported to document:", result.message);
-
-        // Store the Google Docs ID in all exported items
-        viewState.items?.forEach(item => {
-          if (item.type === 'document') {
-            updateItemData(item.id, (prev) => ({
-              ...prev,
-              googleDocsId: cleanDocId
-            }));
-          }
-        });
-
-        setShowDocModal(false);
-        setDocImportError("");
-      } else {
-        throw new Error(result.message || 'Failed to export to document');
-      }
-
-    } catch (error) {
-      console.error('Export error:', error);
-      setDocImportError(error instanceof Error ? error.message : 'Failed to export to document');
-    } finally {
-      setIsExportingDoc(false);
-    }
-  };
 
   const saveItemToGoogleDocs = async (itemId: string) => {
     const item = viewState.items?.find(i => i.id === itemId);
@@ -1339,66 +1178,6 @@ export default function CopilotKitPage() {
               )}
             </div>
           </div>
-          {(viewState.items ?? []).length > 0 ? (
-            <div className={cn(
-              "absolute left-1/2 -translate-x-1/2 bottom-4",
-              "inline-flex rounded-lg shadow-lg bg-card",
-              "[&_button]:bg-card [&_button]:w-22 md:[&_button]:h-10",
-              "[&_button]:shadow-none! [&_button]:hover:bg-accent",
-              "[&_button]:hover:border-accent [&_button]:hover:text-accent",
-              "[&_button]:hover:bg-accent/10!",
-            )}>
-              {/* <NewItemMenu
-                onSelect={(t: CardType) => {
-                  if (t === "document") {
-                    setShowDocModal(true);
-                  } else {
-                    addItem(t);
-                  }
-                }}
-                align="center"
-                className="rounded-r-none border-r-0 peer"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                className={cn(
-                  "gap-1.25 text-base font-semibold rounded-none border-r-0",
-                  "peer-hover:border-l-accent!",
-                )}
-                onClick={() => {
-                  setShowSheetModal(true);
-                }}
-              >
-                📊 Sheets
-              </Button> */}
-              <Button
-                type="button"
-                variant="outline"
-                className={cn(
-                  "gap-1.25 text-base font-semibold rounded-none border-r-0",
-                )}
-                onClick={() => {
-                  setShowDocModal(true);
-                }}
-              >
-                📄 Docs
-              </Button>
-              {/* <Button
-                type="button"
-                variant="outline"
-                className={cn(
-                  "gap-1.25 text-base font-semibold rounded-l-none",
-                )}
-                onClick={() => setShowJsonView((v) => !v)}
-              >
-                {showJsonView
-                  ? "Canvas"
-                  : <>JSON</>
-                }
-              </Button> */}
-            </div>
-          ) : null}
         </main>
       </div>
       <div className="md:hidden">
@@ -1685,12 +1464,10 @@ export default function CopilotKitPage() {
         <div
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-background/75 px-4 py-10 backdrop-blur-sm sm:px-6"
           onClick={() => {
-            if (!isImportingDoc && !isCreatingDoc && !isExportingDoc) {
+            if (!isImportingDoc) {
               setShowDocModal(false);
               setDocImportError("");
-              setNewDocTitle("");
               setDocId("");
-              setExportDocId("");
             }
           }}
           role="dialog"
@@ -1705,20 +1482,18 @@ export default function CopilotKitPage() {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">Connections</p>
                 <h2 id="docs-modal-title" className="mt-1 text-lg font-semibold">Google Docs</h2>
-                <p className="text-sm text-muted-foreground">Import from or export to Google Docs—create a new doc or work with an existing one.</p>
+                <p className="text-sm text-muted-foreground">Import content from Google Docs into your canvas.</p>
               </div>
               <button
                 onClick={() => {
-                  if (!isImportingDoc && !isCreatingDoc && !isExportingDoc) {
+                  if (!isImportingDoc) {
                     setShowDocModal(false);
                     setDocImportError("");
-                    setNewDocTitle("");
                     setDocId("");
-                    setExportDocId("");
                   }
                 }}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-transparent text-muted-foreground transition-colors hover:border-border hover:text-foreground"
-                disabled={isImportingDoc || isCreatingDoc || isExportingDoc}
+                disabled={isImportingDoc}
                 aria-label="Close docs modal"
               >
                 <X className="h-4 w-4" />
@@ -1727,45 +1502,10 @@ export default function CopilotKitPage() {
 
             <div className="px-6 pb-6 sm:px-8 sm:pb-8">
               <div className="mt-6 space-y-6">
-                {/* Create New Doc Section */}
-                <div className="space-y-3 rounded-2xl border border-border/70 bg-muted/60 px-5 py-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <label className="text-sm font-medium text-foreground">Create & Export</label>
-                    <span className="text-xs font-medium text-muted-foreground/80">New doc with canvas content</span>
-                  </div>
-                  <div className="space-y-3">
-                    <input
-                      type="text"
-                      placeholder="E.g. Project Overview"
-                      className={sheetModalInputClasses}
-                      value={newDocTitle}
-                      onChange={(e) => setNewDocTitle(e.target.value)}
-                      disabled={isImportingDoc || isCreatingDoc || isExportingDoc}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && newDocTitle.trim()) {
-                          createNewDoc(newDocTitle);
-                        }
-                      }}
-                    />
-                    <Button
-                      onClick={() => {
-                        if (newDocTitle.trim()) {
-                          createNewDoc(newDocTitle);
-                        }
-                      }}
-                      className="w-full"
-                      variant="secondary"
-                      disabled={isImportingDoc || isCreatingDoc || isExportingDoc || !newDocTitle.trim()}
-                    >
-                      {isCreatingDoc ? "Creating…" : "Create & Export"}
-                    </Button>
-                  </div>
-                </div>
-
                 {/* Import from Doc Section */}
                 <div className="space-y-4 rounded-2xl border border-dashed border-border/70 bg-card px-5 py-5">
                   <div className="text-sm text-foreground">
-                    <span className="font-medium">Import from existing Doc</span>
+                    <span className="font-medium">Import</span>
                     <p className="mt-1 text-xs text-muted-foreground">Paste a Doc link or ID to import content into canvas.</p>
                   </div>
 
@@ -1780,7 +1520,7 @@ export default function CopilotKitPage() {
                       type="text"
                       placeholder="Doc ID or https://docs.google.com/document/d/..."
                       className={sheetModalInputClasses}
-                      disabled={isImportingDoc || isCreatingDoc || isExportingDoc}
+                      disabled={isImportingDoc}
                       value={docId}
                       onChange={(e) => setDocId(e.target.value)}
                       onKeyDown={(e) => {
@@ -1798,52 +1538,15 @@ export default function CopilotKitPage() {
                       }}
                       className="w-full"
                       variant="secondary"
-                      disabled={isImportingDoc || isCreatingDoc || isExportingDoc || !docId.trim()}
+                      disabled={isImportingDoc || !docId.trim()}
                     >
                       {isImportingDoc ? "Importing…" : "Import to Canvas"}
                     </Button>
                   </div>
                 </div>
 
-                {/* Export to Existing Doc Section */}
-                <div className="space-y-4 rounded-2xl border border-dashed border-border/70 bg-card px-5 py-5">
-                  <div className="text-sm text-foreground">
-                    <span className="font-medium">Export to existing Doc</span>
-                    <p className="mt-1 text-xs text-muted-foreground">Paste a Doc link or ID to export current canvas content.</p>
-                  </div>
-
-                  <div className="space-y-3">
-                    <input
-                      type="text"
-                      placeholder="Doc ID or https://docs.google.com/document/d/..."
-                      className={sheetModalInputClasses}
-                      disabled={isImportingDoc || isCreatingDoc || isExportingDoc}
-                      value={exportDocId}
-                      onChange={(e) => setExportDocId(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && exportDocId.trim()) {
-                          exportToDoc(exportDocId);
-                        }
-                      }}
-                    />
-
-                    <Button
-                      onClick={() => {
-                        if (exportDocId.trim()) {
-                          exportToDoc(exportDocId);
-                        }
-                      }}
-                      className="w-full"
-                      variant="secondary"
-                      disabled={isImportingDoc || isCreatingDoc || isExportingDoc || !exportDocId.trim()}
-                    >
-                      {isExportingDoc ? "Exporting…" : "Export to Doc"}
-                    </Button>
-                  </div>
-                </div>
-
                 <div className="rounded-2xl border border-border/70 bg-muted px-5 py-4 text-xs text-muted-foreground">
-                  <p><span className="font-medium text-foreground">Heads up:</span> New Docs open in a new tab. Ensure Composio has access to your documents.</p>
+                  <p><span className="font-medium text-foreground">Heads up:</span> Ensure Composio has access to your Google Docs.</p>
                   <p className="mt-2">We intelligently parse document content and structure into canvas documents.</p>
                 </div>
 
@@ -1852,15 +1555,13 @@ export default function CopilotKitPage() {
                     variant="outline"
                     className="sm:w-fit"
                     onClick={() => {
-                      if (!isImportingDoc && !isCreatingDoc && !isExportingDoc) {
+                      if (!isImportingDoc) {
                         setShowDocModal(false);
                         setDocImportError("");
-                        setNewDocTitle("");
                         setDocId("");
-                        setExportDocId("");
                       }
                     }}
-                    disabled={isImportingDoc || isCreatingDoc || isExportingDoc}
+                    disabled={isImportingDoc}
                   >
                     Close
                   </Button>
