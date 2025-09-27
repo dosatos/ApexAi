@@ -1,17 +1,18 @@
 "use client";
 
 import type React from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type { DocumentData } from "@/lib/canvas/types";
 
 export function ItemHeader(props: {
   id: string;
   name: string;
   data?: DocumentData;
-  onNameChange: (value: string) => void;
-  onNameCommit?: (value: string) => void;
+  isExpanded?: boolean;
+  onToggleExpanded?: () => void;
   onSave?: () => void;
 }) {
-  const { id, name, data, onNameChange, onNameCommit, onSave } = props;
+  const { id, name, data, isExpanded = true, onToggleExpanded, onSave } = props;
   return (
     <div className="mb-4">
       <div className="mb-2 flex items-center justify-between">
@@ -40,13 +41,17 @@ export function ItemHeader(props: {
           </button>
         )}
       </div>
-      <input
-        value={name}
-        onChange={(e: React.ChangeEvent<HTMLInputElement>) => onNameChange(e.target.value)}
-        onBlur={(e: React.FocusEvent<HTMLInputElement>) => onNameCommit?.(e.target.value)}
-        placeholder="Document title"
-        className="w-full appearance-none text-2xl font-semibold outline-none placeholder:text-gray-400 transition-colors focus:text-accent focus:placeholder:text-accent/65"
-      />
+      <button
+        onClick={onToggleExpanded}
+        className="flex w-full items-center gap-2 text-left text-2xl font-semibold text-foreground hover:text-accent transition-colors group cursor-pointer"
+      >
+        {isExpanded ? (
+          <ChevronDown className="h-5 w-5 text-muted-foreground group-hover:text-accent transition-colors" />
+        ) : (
+          <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-accent transition-colors" />
+        )}
+        <span className="flex-1">{name || "Untitled Document"}</span>
+      </button>
     </div>
   );
 }

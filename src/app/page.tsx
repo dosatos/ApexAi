@@ -38,6 +38,10 @@ export default function CopilotKitPage() {
 
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const [showJsonView, setShowJsonView] = useState<boolean>(false);
+
+  // Fold state management - tracks which items are expanded/collapsed
+  const [expandedItems, setExpandedItems] = useState<Map<string, boolean>>(new Map());
+
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const { scrollY } = useScroll({ container: scrollAreaRef });
   const headerScrollThreshold = 64;
@@ -331,7 +335,22 @@ export default function CopilotKitPage() {
     return createdId;
   }, [setState]);
 
+  // Fold state management function
+  const toggleItemExpanded = useCallback((itemId: string) => {
+    setExpandedItems((prev) => {
+      const newMap = new Map(prev);
+      // Default to expanded (true) if not set
+      const currentState = newMap.get(itemId) ?? true;
+      newMap.set(itemId, !currentState);
+      return newMap;
+    });
+  }, []);
 
+  // Helper function to check if an item is expanded
+  const isItemExpanded = useCallback((itemId: string) => {
+    // Default to expanded (true) if not set
+    return expandedItems.get(itemId) ?? true;
+  }, [expandedItems]);
 
   // Frontend Actions (exposed as tools to the agent via CopilotKit)
   useCopilotAction({
@@ -762,7 +781,7 @@ export default function CopilotKitPage() {
   // Google Docs Integration Functions
   const importFromDoc = async (docId: string) => {
     if (!docId.trim()) {
-      setDocImportError("Please enter a valid Document ID");
+      setDocImportError("Please enter a valid Document ID or URL");
       return;
     }
 
@@ -770,12 +789,18 @@ export default function CopilotKitPage() {
     setDocImportError("");
 
     try {
-      // Extract doc ID from URL if needed
+      // Extract doc ID from URL if needed - matches backend parsing logic
       let cleanDocId = docId.trim();
       if (cleanDocId.includes("/document/d/")) {
         const start = cleanDocId.indexOf("/document/d/") + "/document/d/".length;
-        const end = cleanDocId.indexOf("/", start);
-        cleanDocId = cleanDocId.substring(start, end === -1 ? undefined : end);
+        let end = cleanDocId.indexOf("/", start);
+        if (end === -1) {
+          end = cleanDocId.indexOf("#", start);
+        }
+        if (end === -1) {
+          end = cleanDocId.length;
+        }
+        cleanDocId = cleanDocId.substring(start, end);
       }
 
       // Make direct API call to backend for importing
@@ -1214,13 +1239,28 @@ export default function CopilotKitPage() {
                             id={item.id}
                             name={item.name}
                             data={item.data as DocumentData}
-                            onNameChange={(v) => updateItem(item.id, { name: v })}
+                            isExpanded={isItemExpanded(item.id)}
+                            onToggleExpanded={() => toggleItemExpanded(item.id)}
                             onSave={() => saveItemToGoogleDocs(item.id)}
                           />
 
-                          <div className="mt-6">
-                            <CardRenderer item={item} onUpdateData={(updater) => updateItemData(item.id, updater)} onToggleTag={(tag) => toggleTag(item.id, tag)} />
-                          </div>
+                          <motion.div
+                            initial={false}
+                            animate={{
+                              height: isItemExpanded(item.id) ? "auto" : 0,
+                              opacity: isItemExpanded(item.id) ? 1 : 0,
+                            }}
+                            transition={{
+                              height: { duration: 0.3, ease: "easeInOut" },
+                              opacity: { duration: 0.2, ease: "easeInOut" },
+                            }}
+                            style={{ overflow: "hidden" }}
+                            className={isItemExpanded(item.id) ? "mt-6" : ""}
+                          >
+                            {isItemExpanded(item.id) && (
+                              <CardRenderer item={item} onUpdateData={(updater) => updateItemData(item.id, updater)} onToggleTag={(tag) => toggleTag(item.id, tag)} />
+                            )}
+                          </motion.div>
                         </article>
                       ))}
                     </div>
@@ -1569,7 +1609,7 @@ export default function CopilotKitPage() {
                   <div className="space-y-3">
                     <input
                       type="text"
-                      placeholder="Doc ID or https://docs.google.com/document/d/..."
+                      placeholder="Document ID (e.g., 1eySSfFLkfojjM0r...) or full URL (https://docs.google.com/document/d/...)"
                       className={sheetModalInputClasses}
                       disabled={isImportingDoc}
                       value={docId}
