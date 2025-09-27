@@ -1314,7 +1314,7 @@ export default function CopilotKitPage() {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">Connections</p>
                 <h2 id="sheets-modal-title" className="mt-1 text-lg font-semibold">Google Sheets</h2>
-                <p className="text-sm text-muted-foreground">Sync the canvas with a Sheet—create a new one or import an existing source.</p>
+                <p className="text-sm text-muted-foreground">Sync your analysis with a Sheet—create a new one or import an existing source.</p>
               </div>
               <button
                 onClick={handleCloseSheetsModal}
@@ -1416,7 +1416,7 @@ export default function CopilotKitPage() {
                         variant="secondary"
                         disabled={isImporting || isCreatingSheet || !availableSheets.length}
                       >
-                        {isImporting ? "Importing…" : "Import to Canvas"}
+                        {isImporting ? "Importing…" : "Add to Investment Analysis"}
                       </Button>
                     </div>
 
@@ -1501,12 +1501,12 @@ export default function CopilotKitPage() {
                 <p className="font-medium">Sheet details</p>
                 <div className="mt-2 space-y-1 text-xs">
                   <p><span className="font-semibold uppercase tracking-wide">Sheet</span>: {formatWarningDetails.existingFormat}</p>
-                  <p><span className="font-semibold uppercase tracking-wide">Canvas</span>: {formatWarningDetails.canvasFormat}</p>
+                  <p><span className="font-semibold uppercase tracking-wide">Analysis</span>: {formatWarningDetails.canvasFormat}</p>
                 </div>
               </div>
 
               <p className="text-sm text-muted-foreground">
-                Importing will completely replace your current canvas data with the sheet contents. Your existing cards will be lost unless they’re saved elsewhere.
+                Importing will completely replace your current analysis data with the sheet contents. Your existing cards will be lost unless they're saved elsewhere.
               </p>
 
               <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
@@ -1521,7 +1521,7 @@ export default function CopilotKitPage() {
                   variant="destructive"
                   className="flex-1"
                 >
-                  Replace canvas with sheet
+                  Replace analysis with sheet
                 </Button>
                 <Button
                   variant="outline"
@@ -1531,13 +1531,13 @@ export default function CopilotKitPage() {
                   }}
                   className="flex-1"
                 >
-                  Keep current canvas
+                  Keep current analysis
                 </Button>
               </div>
 
               <div className="rounded-2xl border border-border/70 bg-muted/50 px-4 py-3 text-xs text-muted-foreground">
                 <p className="font-medium text-foreground">Tip</p>
-                <p className="mt-1">Consider creating a new Sheet or exporting your canvas JSON before importing if you might need to roll back.</p>
+                <p className="mt-1">Consider creating a new Sheet or exporting your analysis JSON before importing if you might need to roll back.</p>
               </div>
             </div>
           </div>
@@ -1567,7 +1567,7 @@ export default function CopilotKitPage() {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">Connections</p>
                 <h2 id="docs-modal-title" className="mt-1 text-lg font-semibold">Google Docs</h2>
-                <p className="text-sm text-muted-foreground">Import content from Google Docs into your canvas.</p>
+                <p className="text-sm text-muted-foreground">Import content from Google Docs into your analysis.</p>
               </div>
               <button
                 onClick={() => {
@@ -1591,7 +1591,7 @@ export default function CopilotKitPage() {
                 <div className="space-y-4 rounded-2xl border border-dashed border-border/70 bg-card px-5 py-5">
                   <div className="text-sm text-foreground">
                     <span className="font-medium">Import</span>
-                    <p className="mt-1 text-xs text-muted-foreground">Paste a Doc link or ID to import content into canvas.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Paste a Doc link or ID to add content to your analysis.</p>
                   </div>
 
                   {docImportError && (
@@ -1625,14 +1625,14 @@ export default function CopilotKitPage() {
                       variant="secondary"
                       disabled={isImportingDoc || !docId.trim()}
                     >
-                      {isImportingDoc ? "Importing…" : "Import to Canvas"}
+                      {isImportingDoc ? "Importing…" : "Add to Investment Analysis"}
                     </Button>
                   </div>
                 </div>
 
                 <div className="rounded-2xl border border-border/70 bg-muted px-5 py-4 text-xs text-muted-foreground">
                   <p><span className="font-medium text-foreground">Heads up:</span> Ensure Composio has access to your Google Docs.</p>
-                  <p className="mt-2">We intelligently parse document content and structure into canvas documents.</p>
+                  <p className="mt-2">We intelligently parse document content and structure into analysis documents.</p>
                 </div>
 
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
