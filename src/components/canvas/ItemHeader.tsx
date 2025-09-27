@@ -11,8 +11,9 @@ export function ItemHeader(props: {
   isExpanded?: boolean;
   onToggleExpanded?: () => void;
   onSave?: () => void;
+  onRemove?: () => void;
 }) {
-  const { id, name, data, isExpanded = true, onToggleExpanded, onSave } = props;
+  const { id, name, data, isExpanded = true, onToggleExpanded, onSave, onRemove } = props;
   return (
     <div className="mb-4">
       <div className="mb-2 flex items-center justify-between">
@@ -32,14 +33,24 @@ export function ItemHeader(props: {
             </span>
           )}
         </div>
-        {onSave && (
-          <button
-            onClick={onSave}
-            className="px-2 py-1 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-          >
-            {data?.googleDocsId ? 'Update' : 'Save'}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {onSave && (
+            <button
+              onClick={onSave}
+              className="px-2 py-1 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            >
+              {data?.googleDocsId ? 'Update' : 'Save'}
+            </button>
+          )}
+          {onRemove && (
+            <button
+              onClick={onRemove}
+              className="px-2 py-1 text-xs font-medium bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+            >
+              Remove
+            </button>
+          )}
+        </div>
       </div>
       <button
         onClick={onToggleExpanded}

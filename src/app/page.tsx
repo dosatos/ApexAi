@@ -289,7 +289,24 @@ export default function CopilotKitPage() {
       const items: Item[] = (base.items ?? []).filter((p) => p.id !== itemId);
       return { ...base, items, lastAction: existed ? `deleted:${itemId}` : `not_found:${itemId}` } as AgentState;
     });
+
+    // Clean up expansion state for deleted item
+    setExpandedItems((prev) => {
+      const newMap = new Map(prev);
+      newMap.delete(itemId);
+      return newMap;
+    });
   }, [setState]);
+
+  const deleteItemWithConfirmation = useCallback((itemId: string, itemName: string) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${itemName || 'Untitled Document'}"?\n\nThis action cannot be undone.`
+    );
+
+    if (confirmed) {
+      deleteItem(itemId);
+    }
+  }, [deleteItem]);
 
   // Checklist item local helper removed; Copilot actions handle checklist CRUD
 
@@ -1219,14 +1236,6 @@ export default function CopilotKitPage() {
                     <div className="space-y-6 pb-20">
                       {(viewState.items ?? []).map((item) => (
                         <article key={item.id} className="relative rounded-2xl border p-5 shadow-sm transition-colors ease-out bg-card hover:border-accent/40 focus-within:border-accent/60">
-                          <button
-                            type="button"
-                            aria-label="Delete card"
-                            className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-card text-gray-400 hover:bg-accent/10 hover:text-accent transition-colors"
-                            onClick={() => deleteItem(item.id)}
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
                           <ItemHeader
                             id={item.id}
                             name={item.name}
@@ -1234,6 +1243,7 @@ export default function CopilotKitPage() {
                             isExpanded={isItemExpanded(item.id)}
                             onToggleExpanded={() => toggleItemExpanded(item.id)}
                             onSave={() => saveItemToGoogleDocs(item.id)}
+                            onRemove={() => deleteItemWithConfirmation(item.id, item.name)}
                           />
 
                           <motion.div
