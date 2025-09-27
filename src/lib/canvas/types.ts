@@ -6,6 +6,9 @@ export interface DocumentData {
   modifiedAt?: string; // last modification timestamp
   wordCount?: number; // word count for the document
   googleDocsId?: string; // Google Docs document ID if synced
+  googleDriveId?: string; // Google Drive file ID if imported from Drive
+  googleDriveLink?: string; // Google Drive file webViewLink
+  googleDriveMimeType?: string; // Google Drive file MIME type
 }
 
 export type ItemData = DocumentData;

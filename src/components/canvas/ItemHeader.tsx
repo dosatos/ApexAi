@@ -18,12 +18,23 @@ export function ItemHeader(props: {
     <div className="mb-4">
       <div className="mb-2 flex items-center justify-between">
         <div>
-          {data?.googleDocsId ? (
+          {data?.googleDriveLink ? (
+            <a
+              href={data.googleDriveLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-sm border border-dashed border-foreground/25 px-1 py-0.5 text-xs font-mono text-muted-foreground/50 hover:border-green-400 hover:text-green-600 transition-colors"
+              title="Open in Google Drive"
+            >
+              <span className="font-medium">Drive ID:</span><span className="-tracking-widest"> </span><span className="tracking-wide">{data.googleDriveId || id}</span>
+            </a>
+          ) : data?.googleDocsId ? (
             <a
               href={`https://docs.google.com/document/d/${data.googleDocsId}/edit`}
               target="_blank"
               rel="noopener noreferrer"
               className="rounded-sm border border-dashed border-foreground/25 px-1 py-0.5 text-xs font-mono text-muted-foreground/50 hover:border-blue-400 hover:text-blue-600 transition-colors"
+              title="Open in Google Docs"
             >
               <span className="font-medium">ID:</span><span className="-tracking-widest"> </span><span className="tracking-wide">{data.googleDocsId}</span>
             </a>

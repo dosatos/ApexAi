@@ -279,6 +279,27 @@ def search_drive_files(query: str, page_size: int = 20) -> Optional[Dict[str, An
         return None
 
 
+def construct_drive_link(file_id: str, mime_type: str) -> str:
+    """
+    Construct a Google Drive link based on file ID and mime type.
+
+    Args:
+        file_id: Google Drive file ID
+        mime_type: File MIME type
+
+    Returns:
+        Web view link URL
+    """
+    if mime_type == "application/vnd.google-apps.document":
+        return f"https://docs.google.com/document/d/{file_id}/edit"
+    elif mime_type == "application/vnd.google-apps.spreadsheet":
+        return f"https://docs.google.com/spreadsheets/d/{file_id}/edit"
+    elif mime_type == "application/vnd.google-apps.presentation":
+        return f"https://docs.google.com/presentation/d/{file_id}/edit"
+    else:
+        return f"https://drive.google.com/file/d/{file_id}/view"
+
+
 def convert_drive_file_to_canvas_item(file_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Convert a Google Drive file to a canvas document item.
@@ -295,7 +316,7 @@ def convert_drive_file_to_canvas_item(file_data: Dict[str, Any]) -> Dict[str, An
     file_name = file_data.get("name", "Unknown File")
     content = file_data.get("content", "")
     content_type = file_data.get("content_type", "text")
-    file_id = file_data.get("file_id", "")
+    file_id = file_data.get("fileId", "")
     mime_type = file_data.get("mime_type", "")
 
     # Determine subtitle based on file type
@@ -309,9 +330,12 @@ def convert_drive_file_to_canvas_item(file_data: Dict[str, Any]) -> Dict[str, An
     else:
         subtitle = f"Drive File ({mime_type.split('/')[-1].upper()})"
 
+    # Construct Drive link
+    drive_link = construct_drive_link(file_id, mime_type) if file_id else ""
+
     # Create document item
     item = {
-        "id": "0001",
+        "id": file_id,
         "type": "document",
         "name": file_name,
         "subtitle": subtitle,
@@ -322,7 +346,7 @@ def convert_drive_file_to_canvas_item(file_data: Dict[str, Any]) -> Dict[str, An
             "wordCount": len(content.split()) if content else 0,
             "googleDriveId": file_id,
             "googleDriveMimeType": mime_type,
-            "googleDriveLink": file_data.get("metadata", {}).get("webViewLink", "")
+            "googleDriveLink": drive_link
         }
     }
 
