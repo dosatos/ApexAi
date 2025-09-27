@@ -24,23 +24,23 @@ CopilotKit connects your app's logic, state, and user context to the AI agents t
 
 [More about CopilotKit ->](https://copilotkit.ai)
 
-### Getting Started
+## Getting Started
 
 This repository is designed to help you hit the ground running for the hackathon. Use it as a foundation for your project, a source of inspiration, or simply as a quick way to get started. The following steps will guide you through setting up the project locally.
 
-#### 📚 Documentation
+### 📚 Documentation
 In case you get stuck, we highly recommend checking out the documentation.
 - [LlamaIndex Documentation](https://developers.llamaindex.ai/python/workflows) - Learn more about LlamaIndex and its features
 - [CopilotKit Documentation](https://docs.copilotkit.ai) - Explore CopilotKit's capabilities
 - [Composio Documentation](https://docs.composio.dev) - Learn about Composio's tool integrations
 - [Next.js Documentation](https://nextjs.org/docs) - Learn about Next.js features and API
 
-#### 🧑‍💻 Vibe coding
+### 🧑‍💻 Vibe coding
 Plug-in these resources to let coding agents help you and our team!
 - [vibe-llama](https://github.com/run-llama/vibe-llama)
 - [Copilotkit MCP](https://docs.copilotkit.ai/vibe-coding-mcp)
 
-#### Prerequisites
+### Prerequisites
 Before getting started, you'll need to the following.
 - Node.js 20+ 
 - Python 3.10+
@@ -53,7 +53,7 @@ Before getting started, you'll need to the following.
   - [yarn](https://classic.yarnpkg.com/lang/en/docs/install/#mac-stable)
   - [bun](https://bun.sh/)
 
-#### Quickstart
+### Quickstart
 
 > [!WARNING]
 > If you run into any problems getting started, make sure you have all the [Prerequisites](#prerequisites) installed, or else it can fail.
@@ -433,6 +433,14 @@ const Main = () => {
 </details>
 
 ## Troubleshooting
+
+<details>
+
+<summary>Setup errors -></summary>
+
+If you encounter errors while setting up the project, make sure you have all the [Prerequisites](#prerequisites) installed. Missing prerequisites like Node.js, Python, or `uv` can cause installation or build failures.
+
+</details>
 
 <details>
 
