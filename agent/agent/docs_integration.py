@@ -376,13 +376,12 @@ def create_document_with_item_content(item: Dict[str, Any]) -> Dict[str, Any]:
     Create a new Google Doc with content from a single canvas item.
 
     Args:
-        item: Canvas item with type, name, subtitle, and data
+        item: Canvas item with type, name, and data
 
     Returns:
         Dictionary with new document info
     """
     title = item.get("name", "Untitled Document")
-    subtitle = item.get("subtitle", "")
     item_data = item.get("data", {})
 
     print(f"Creating document for item: {title}")
@@ -391,9 +390,6 @@ def create_document_with_item_content(item: Dict[str, Any]) -> Dict[str, Any]:
     # Build markdown content for the item
     content_parts = []
     content_parts.append(f"# {title}\n\n")
-
-    if subtitle:
-        content_parts.append(f"*{subtitle}*\n\n")
 
     # Get the main content based on item type
     if item.get("type") == "document":
@@ -417,7 +413,7 @@ def update_document_with_item_content(doc_id: str, item: Dict[str, Any]) -> Dict
 
     Args:
         doc_id: Google Docs document ID
-        item: Canvas item with type, name, subtitle, and data
+        item: Canvas item with type, name, and data
 
     Returns:
         Dictionary with update result status
@@ -428,7 +424,6 @@ def update_document_with_item_content(doc_id: str, item: Dict[str, Any]) -> Dict
 
     try:
         title = item.get("name", "Untitled Document")
-        subtitle = item.get("subtitle", "")
         item_data = item.get("data", {})
 
         print(f"Updating document {doc_id} for item: {title}")
@@ -437,9 +432,6 @@ def update_document_with_item_content(doc_id: str, item: Dict[str, Any]) -> Dict
         # Build markdown content for the item
         content_parts = []
         content_parts.append(f"# {title}\n\n")
-
-        if subtitle:
-            content_parts.append(f"*{subtitle}*\n\n")
 
         # Get the main content based on item type
         if item.get("type") == "document":

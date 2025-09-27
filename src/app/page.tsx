@@ -149,7 +149,6 @@ export default function CopilotKitPage() {
         "- Use setDocumentContent to update document content.",
         "- Use appendDocumentContent to add text to existing content.",
         "- Use clearDocumentContent to clear all content.",
-        "- Document subtitle/description keywords map to setItemSubtitleOrDescription.",
         "LOOP CONTROL: When asked to 'add a couple' items, add at most 2 and stop. Avoid repeated calls to the same mutating tool in one turn.",
         "RANDOMIZATION: If the user specifically asks for random/mock values, you MAY generate and set them right away using the tools (do not block for more details).",
         "VERIFICATION: After tools run, re-read the latest state and confirm what actually changed.",
@@ -373,19 +372,6 @@ export default function CopilotKitPage() {
     },
   });
 
-  // Set item subtitle
-  useCopilotAction({
-    name: "setItemSubtitleOrDescription",
-    description: "Set an item's description/subtitle (short description or subtitle).",
-    available: "remote",
-    parameters: [
-      { name: "subtitle", type: "string", required: true, description: "The new item description/subtitle." },
-      { name: "itemId", type: "string", required: true, description: "Target item id." },
-    ],
-    handler: ({ subtitle, itemId }: { subtitle: string; itemId: string }) => {
-      updateItem(itemId, { subtitle });
-    },
-  });
 
 
   // Document-specific field updates
@@ -1331,11 +1317,8 @@ export default function CopilotKitPage() {
                           <ItemHeader
                             id={item.id}
                             name={item.name}
-                            subtitle={item.subtitle}
-                            description={""}
                             data={item.data as DocumentData}
                             onNameChange={(v) => updateItem(item.id, { name: v })}
-                            onSubtitleChange={(v) => updateItem(item.id, { subtitle: v })}
                             onSave={() => saveItemToGoogleDocs(item.id)}
                           />
 
