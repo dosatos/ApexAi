@@ -1288,7 +1288,13 @@ export default function CopilotKitPage() {
                     <h2 className="text-lg font-semibold text-foreground">Nothing here yet</h2>
                     <p className="mt-2 text-sm text-muted-foreground">Create your first item to get started.</p>
                     <div className="mt-6 flex justify-center">
-                      <NewItemMenu onSelect={(t: CardType) => addItem(t)} align="center" className="md:h-10" />
+                      <NewItemMenu onSelect={(t: CardType) => {
+                        if (t === "document") {
+                          setShowDocModal(true);
+                        } else {
+                          addItem(t);
+                        }
+                      }} align="center" className="md:h-10" />
                     </div>
                   </div>
                 </EmptyState>
@@ -1342,8 +1348,14 @@ export default function CopilotKitPage() {
               "[&_button]:hover:border-accent [&_button]:hover:text-accent",
               "[&_button]:hover:bg-accent/10!",
             )}>
-              <NewItemMenu
-                onSelect={(t: CardType) => addItem(t)}
+              {/* <NewItemMenu
+                onSelect={(t: CardType) => {
+                  if (t === "document") {
+                    setShowDocModal(true);
+                  } else {
+                    addItem(t);
+                  }
+                }}
                 align="center"
                 className="rounded-r-none border-r-0 peer"
               />
@@ -1359,7 +1371,7 @@ export default function CopilotKitPage() {
                 }}
               >
                 📊 Sheets
-              </Button>
+              </Button> */}
               <Button
                 type="button"
                 variant="outline"
@@ -1372,7 +1384,7 @@ export default function CopilotKitPage() {
               >
                 📄 Docs
               </Button>
-              <Button
+              {/* <Button
                 type="button"
                 variant="outline"
                 className={cn(
@@ -1384,7 +1396,7 @@ export default function CopilotKitPage() {
                   ? "Canvas"
                   : <>JSON</>
                 }
-              </Button>
+              </Button> */}
             </div>
           ) : null}
         </main>
