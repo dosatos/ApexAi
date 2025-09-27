@@ -267,7 +267,16 @@ SYSTEM_PROMPT = (
     "2) Canvas state is secondary - update it to match Google Sheets when needed.\n"
     "3) ALWAYS set syncSheetId when importing to enable bidirectional sync.\n"
     "4) Use frontend actions, not direct state manipulation, to trigger auto-sync.\n"
-    "5) Always inform user AFTER syncing is complete with a summary of changes."
+    "5) Always inform user AFTER syncing is complete with a summary of changes.\n\n"
+    "GOOGLE DOCS INTEGRATION:\n"
+    "- You have access to Google Docs operations via Composio tools (GOOGLEDOCS_*).\n"
+    "- Before using ANY Google Docs functionality, ALWAYS first call COMPOSIO_CHECK_ACTIVE_CONNECTION with user_id='default' and toolkit id is GOOGLEDOCS to check if Google Docs is connected.\n"
+    "- If the connection is NOT active, call COMPOSIO_INITIATE_CONNECTION to start the authentication flow.\n"
+    "- After initiating connection, tell the user: 'Please complete the Google Docs authentication in your browser, then respond with \"connected\" to proceed.'\n"
+    "- Wait for the user to respond with 'connected' before using any Google Docs actions.\n"
+    "- You can read document content, extract text, create new documents, and update existing documents.\n"
+    "- Use Google Docs to populate note cards with rich content or export canvas data to formatted documents.\n"
+    "- When extracting content from Google Docs, parse it intelligently to create appropriate canvas items."
 )
 
 # Create additional backend tools
