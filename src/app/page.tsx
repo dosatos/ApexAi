@@ -12,9 +12,9 @@ import ShikiHighlighter from "react-shiki/web";
 import { motion, useScroll, useTransform, useMotionValueEvent } from "motion/react";
 import { EmptyState } from "@/components/empty-state";
 import { cn, getContentArg } from "@/lib/utils";
-import type { AgentState, Item, ItemData, ProjectData, EntityData, NoteData, ChartData, CardType } from "@/lib/canvas/types";
-import { initialState, isNonEmptyAgentState } from "@/lib/canvas/state";
-import { projectAddField4Item, projectSetField4ItemText, projectSetField4ItemDone, projectRemoveField4Item, chartAddField1Metric, chartSetField1Label, chartSetField1Value, chartRemoveField1Metric } from "@/lib/canvas/updates";
+import type { AgentState, Item, ItemData, DocumentData, CardType } from "@/lib/canvas/types";
+import { initialState, isNonEmptyAgentState, defaultDataFor } from "@/lib/canvas/state";
+import { updateDocumentContent } from "@/lib/canvas/updates";
 import useMediaQuery from "@/hooks/use-media-query";
 import ItemHeader from "@/components/canvas/ItemHeader";
 import NewItemMenu from "@/components/canvas/NewItemMenu";
@@ -46,8 +46,6 @@ export default function CopilotKitPage() {
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const descTextareaRef = useRef<HTMLInputElement | null>(null);
   const lastCreationRef = useRef<{ type: CardType; name: string; id: string; ts: number } | null>(null);
-  const lastChecklistCreationRef = useRef<Record<string, { text: string; id: string; ts: number }>>({});
-  const lastMetricCreationRef = useRef<Record<string, { label: string; value: number | ""; id: string; ts: number }>>({});
 
   useMotionValueEvent(scrollY, "change", (y) => {
     const disable = y >= headerScrollThreshold;
@@ -139,30 +137,19 @@ export default function CopilotKitPage() {
         .join("\n");
       const fieldSchema = [
         "FIELD SCHEMA (authoritative):",
-        "- project.data:",
-        "  - field1: string (text)",
-        "  - field2: string (select: 'Option A' | 'Option B' | 'Option C'; empty string means unset)",
-        "  - field3: string (date 'YYYY-MM-DD')",
-        "  - field4: ChecklistItem[] where ChecklistItem={id: string, text: string, done: boolean, proposed: boolean}",
-        "- entity.data:",
-        "  - field1: string",
-        "  - field2: string (select: 'Option A' | 'Option B' | 'Option C'; empty string means unset)",
-        "  - field3: string[] (selected tags; subset of field3_options)",
-        "  - field3_options: string[] (available tags)",
-        "- note.data:",
-        "  - field1: string (textarea)",
-        "- chart.data:",
-        "  - field1: Array<{id: string, label: string, value: number | ''}> with value in [0..100] or ''",
+        "- document.data:",
+        "  - content: string (rich text content)",
+        "  - createdAt: string (ISO timestamp)",
+        "  - modifiedAt: string (ISO timestamp)",
+        "  - wordCount: number (automatic word count)",
       ].join("\n");
       const toolUsageHints = [
         "TOOL USAGE HINTS:",
-        "- To create cards, call createItem with { type: 'project' | 'entity' | 'note' | 'chart', name?: string } and use returned id.",
-        "- Prefer calling specific actions: setProjectField1, setProjectField2, setProjectField3, addProjectChecklistItem, setProjectChecklistItem, removeProjectChecklistItem.",
-        "- field2 values: 'Option A' | 'Option B' | 'Option C' | '' (empty clears).",
-        "- field3 accepts natural dates (e.g., 'tomorrow', '2025-01-30'); it will be normalized to YYYY-MM-DD.",
-        "- Checklist edits accept either the generated id (e.g., '001') or a numeric index (e.g., '1', 1-based).",
-        "- For charts, values are clamped to [0..100]; use clearChartField1Value to clear an existing metric value.",
-        "- Card subtitle/description keywords (description, overview, summary, caption, blurb) map to setItemSubtitleOrDescription. Never write these to data.field1 for non-note items.",
+        "- To create documents, call createItem with { name?: string } and use returned id.",
+        "- Use setDocumentContent to update document content.",
+        "- Use appendDocumentContent to add text to existing content.",
+        "- Use clearDocumentContent to clear all content.",
+        "- Document subtitle/description keywords map to setItemSubtitleOrDescription.",
         "LOOP CONTROL: When asked to 'add a couple' items, add at most 2 and stop. Avoid repeated calls to the same mutating tool in one turn.",
         "RANDOMIZATION: If the user specifically asks for random/mock values, you MAY generate and set them right away using the tools (do not block for more details).",
         "VERIFICATION: After tools run, re-read the latest state and confirm what actually changed.",
@@ -234,16 +221,13 @@ export default function CopilotKitPage() {
     ],
     renderAndWaitForResponse: ({ respond, args }) => {
       const options: { id: CardType; label: string }[] = [
-        { id: "project", label: "Project" },
-        { id: "entity", label: "Entity" },
-        { id: "note", label: "Note" },
-        { id: "chart", label: "Chart" },
+        { id: "document", label: "Document" },
       ];
       let selected: CardType | "" = "";
       return (
         <div className="rounded-md border bg-white p-4 text-sm shadow">
-          <p className="mb-2 font-medium">Select a card type</p>
-          <p className="mb-3 text-xs text-gray-600">{getContentArg(args) ?? "Which type of card should I create?"}</p>
+          <p className="mb-2 font-medium">Create a document</p>
+          <p className="mb-3 text-xs text-gray-600">{getContentArg(args) ?? "I'll create a new document for you."}</p>
           <select
             className="w-full rounded border px-2 py-1"
             defaultValue=""
@@ -263,7 +247,7 @@ export default function CopilotKitPage() {
               onClick={() => selected && respond?.(selected)}
               disabled={!selected}
             >
-              Use type
+              Create Document
             </button>
           </div>
         </div>
@@ -320,32 +304,6 @@ export default function CopilotKitPage() {
 
   // Remove checklist item local helper removed; use Copilot action instead
 
-  // Helper to generate default data by type
-  const defaultDataFor = useCallback((type: CardType): ItemData => {
-    switch (type) {
-      case "project":
-        return {
-          field1: "",
-          field2: "",
-          field3: "",
-          field4: [],
-          field4_id: 0,
-        } as ProjectData;
-      case "entity":
-        return {
-          field1: "",
-          field2: "",
-          field3: [],
-          field3_options: ["Tag 1", "Tag 2", "Tag 3"],
-        } as EntityData;
-      case "note":
-        return { field1: "" } as NoteData;
-      case "chart":
-        return { field1: [], field1_id: 0 } as ChartData;
-      default:
-        return { content: "" } as NoteData;
-    }
-  }, []);
 
   const addItem = useCallback((type: CardType, name?: string) => {
     const t: CardType = type;
@@ -366,13 +324,13 @@ export default function CopilotKitPage() {
         type: t,
         name: name && name.trim() ? name.trim() : "",
         subtitle: "",
-        data: defaultDataFor(t),
+        data: defaultDataFor(),
       };
       const nextItems = [...items, item];
       return { ...base, items: nextItems, itemsCreated: nextNumber, lastAction: `created:${createdId}` } as AgentState;
     });
     return createdId;
-  }, [defaultDataFor, setState]);
+  }, [setState]);
 
 
 
@@ -430,456 +388,79 @@ export default function CopilotKitPage() {
   });
 
 
-  // Note-specific field updates (field numbering)
+  // Document-specific field updates
   useCopilotAction({
-    name: "setNoteField1",
-    description: "Update note content (note.data.field1).",
+    name: "setDocumentContent",
+    description: "Update document content.",
     available: "remote",
     parameters: [
-      { name: "value", type: "string", required: true, description: "New content for note.data.field1." },
-      { name: "itemId", type: "string", required: true, description: "Target item id (note)." },
+      { name: "content", type: "string", required: true, description: "New content for the document." },
+      { name: "itemId", type: "string", required: true, description: "Target item id (document)." },
     ],
-    handler: ({ value, itemId }: { value: string; itemId: string }) => {
-      updateItemData(itemId, (prev) => {
-        const nd = prev as NoteData;
-        if (Object.prototype.hasOwnProperty.call(nd, "field1")) {
-          return { ...(nd as NoteData), field1: value } as NoteData;
-        }
-        return prev;
-      });
+    handler: ({ content, itemId }: { content: string; itemId: string }) => {
+      updateItemData(itemId, (prev) => updateDocumentContent(prev as DocumentData, content));
     },
   });
 
   useCopilotAction({
-    name: "appendNoteField1",
-    description: "Append text to note content (note.data.field1).",
+    name: "appendDocumentContent",
+    description: "Append text to document content.",
     available: "remote",
     parameters: [
-      { name: "value", type: "string", required: true, description: "Text to append to note.data.field1." },
-      { name: "itemId", type: "string", required: true, description: "Target item id (note)." },
+      { name: "content", type: "string", required: true, description: "Text to append to the document." },
+      { name: "itemId", type: "string", required: true, description: "Target item id (document)." },
       { name: "withNewline", type: "boolean", required: false, description: "If true, prefix with a newline." },
     ],
-    handler: ({ value, itemId, withNewline }: { value: string; itemId: string; withNewline?: boolean }) => {
+    handler: ({ content, itemId, withNewline }: { content: string; itemId: string; withNewline?: boolean }) => {
       updateItemData(itemId, (prev) => {
-        const nd = prev as NoteData;
-        if (Object.prototype.hasOwnProperty.call(nd, "field1")) {
-          const existing = (nd.field1 ?? "");
-          const next = existing + (withNewline ? "\n" : "") + value;
-          return { ...(nd as NoteData), field1: next } as NoteData;
-        }
-        return prev;
+        const docData = prev as DocumentData;
+        const existing = docData.content || "";
+        const newContent = existing + (withNewline ? "\n" : "") + content;
+        return updateDocumentContent(docData, newContent);
       });
     },
   });
 
   useCopilotAction({
-    name: "clearNoteField1",
-    description: "Clear note content (note.data.field1).",
+    name: "clearDocumentContent",
+    description: "Clear document content.",
     available: "remote",
     parameters: [
-      { name: "itemId", type: "string", required: true, description: "Target item id (note)." },
+      { name: "itemId", type: "string", required: true, description: "Target item id (document)." },
     ],
     handler: ({ itemId }: { itemId: string }) => {
-      updateItemData(itemId, (prev) => {
-        const nd = prev as NoteData;
-        if (Object.prototype.hasOwnProperty.call(nd, "field1")) {
-          return { ...(nd as NoteData), field1: "" } as NoteData;
-        }
-        return prev;
-      });
+      updateItemData(itemId, (prev) => updateDocumentContent(prev as DocumentData, ""));
     },
   });
 
-  useCopilotAction({
-    name: "setProjectField1",
-    description: "Update project field1 (text).",
-    available: "remote",
-    parameters: [
-      { name: "value", type: "string", required: true, description: "New value for field1." },
-      { name: "itemId", type: "string", required: true, description: "Target item id." },
-    ],
-    handler: ({ value, itemId }: { value: string; itemId: string }) => {
-      const safeValue = String((value as unknown as string) ?? "");
-      updateItemData(itemId, (prev) => {
-        const anyPrev = prev as { field1?: string };
-        if (typeof anyPrev.field1 === "string") {
-          return { ...anyPrev, field1: safeValue } as ItemData;
-        }
-        return prev;
-      });
-    },
-  });
 
-  // Project-specific field updates
-  useCopilotAction({
-    name: "setProjectField2",
-    description: "Update project field2 (select).",
-    available: "remote",
-    parameters: [
-      { name: "value", type: "string", required: true, description: "New value for field2." },
-      { name: "itemId", type: "string", required: true, description: "Target item id." },
-    ],
-    handler: ({ value, itemId }: { value: string; itemId: string }) => {
-      const safeValue = String((value as unknown as string) ?? "");
-      updateItemData(itemId, (prev) => {
-        const anyPrev = prev as { field2?: string };
-        if (typeof anyPrev.field2 === "string") {
-          return { ...anyPrev, field2: safeValue } as ItemData;
-        }
-        return prev;
-      });
-    },
-  });
 
-  useCopilotAction({
-    name: "setProjectField3",
-    description: "Update project field3 (date, YYYY-MM-DD).",
-    available: "remote",
-    parameters: [
-      { name: "date", type: "string", required: true, description: "Date in YYYY-MM-DD format." },
-      { name: "itemId", type: "string", required: true, description: "Target item id." },
-    ],
-    handler: (args: { date?: string; itemId: string } & Record<string, unknown>) => {
-      const itemId = String(args.itemId);
-      const dictArgs = args as Record<string, unknown>;
-      const rawInput = (dictArgs["date"]) ?? (dictArgs["value"]) ?? (dictArgs["val"]) ?? (dictArgs["text"]);
-      const normalizeDate = (input: unknown): string | null => {
-        if (input == null) return null;
-        if (input instanceof Date && !isNaN(input.getTime())) {
-          const yyyy = input.getUTCFullYear();
-          const mm = String(input.getUTCMonth() + 1).padStart(2, "0");
-          const dd = String(input.getUTCDate()).padStart(2, "0");
-          return `${yyyy}-${mm}-${dd}`;
-        }
-        const asString = String(input);
-        // Already in YYYY-MM-DD
-        if (/^\d{4}-\d{2}-\d{2}$/.test(asString)) return asString;
-        const parsed = new Date(asString);
-        if (!isNaN(parsed.getTime())) {
-          const yyyy = parsed.getUTCFullYear();
-          const mm = String(parsed.getUTCMonth() + 1).padStart(2, "0");
-          const dd = String(parsed.getUTCDate()).padStart(2, "0");
-          return `${yyyy}-${mm}-${dd}`;
-        }
-        return null;
-      };
-      const normalized = normalizeDate(rawInput);
-      if (!normalized) return;
-      updateItemData(itemId, (prev) => {
-        const anyPrev = prev as { field3?: string };
-        if (typeof anyPrev.field3 === "string") {
-          return { ...anyPrev, field3: normalized } as ItemData;
-        }
-        return prev;
-      });
-    },
-  });
-
-  // Clear project field3 (date)
-  useCopilotAction({
-    name: "clearProjectField3",
-    description: "Clear project field3 (date).",
-    available: "remote",
-    parameters: [
-      { name: "itemId", type: "string", required: true, description: "Target item id." },
-    ],
-    handler: ({ itemId }: { itemId: string }) => {
-      updateItemData(itemId, (prev) => {
-        const anyPrev = prev as { field3?: string };
-        if (typeof anyPrev.field3 === "string") {
-          return { ...anyPrev, field3: "" } as ItemData;
-        }
-        return prev;
-      });
-    },
-  });
-
-  // Project field4 (checklist) CRUD
-  useCopilotAction({
-    name: "addProjectChecklistItem",
-    description: "Add a new checklist item to a project.",
-    available: "remote",
-    parameters: [
-      { name: "itemId", type: "string", required: true, description: "Target item id (project)." },
-      { name: "text", type: "string", required: false, description: "Initial checklist text (optional)." },
-    ],
-    handler: ({ itemId, text }: { itemId: string; text?: string }) => {
-      const norm = (text ?? "").trim();
-      // 1) If a checklist item with same text exists, return its id
-      const project = (viewState.items ?? initialState.items).find((it) => it.id === itemId);
-      if (project && project.type === "project") {
-        const list = ((project.data as ProjectData).field4 ?? []);
-        const dup = norm ? list.find((c) => (c.text ?? "").trim() === norm) : undefined;
-        if (dup) return dup.id;
-      }
-      // 2) Per-project throttle to avoid rapid duplicates
-      const now = Date.now();
-      const key = `${itemId}`;
-      const recent = lastChecklistCreationRef.current[key];
-      if (recent && recent.text === norm && now - recent.ts < 800) {
-        return recent.id;
-      }
-      let createdId = "";
-      updateItemData(itemId, (prev) => {
-        const { next, createdId: id } = projectAddField4Item(prev as ProjectData, text);
-        createdId = id;
-        return next;
-      });
-      lastChecklistCreationRef.current[key] = { text: norm, id: createdId, ts: now };
-      return createdId;
-    },
-  });
-
-  useCopilotAction({
-    name: "setProjectChecklistItem",
-    description: "Update a project's checklist item text and/or done state.",
-    available: "remote",
-    parameters: [
-      { name: "itemId", type: "string", required: true, description: "Target item id (project)." },
-      { name: "checklistItemId", type: "string", required: true, description: "Checklist item id." },
-      { name: "text", type: "string", required: false, description: "New text (optional)." },
-      { name: "done", type: "boolean", required: false, description: "Done status (optional)." },
-    ],
-    handler: (args) => {
-      const itemId = String(args.itemId ?? "");
-      const target = args.checklistItemId ?? args.itemId;
-      let targetId = target != null ? String(target) : "";
-      const maybeDone = args.done;
-      const text: string | undefined = args.text != null ? String(args.text) : undefined;
-      const toBool = (v: unknown): boolean | undefined => {
-        if (typeof v === "boolean") return v;
-        if (typeof v === "string") {
-          const s = v.trim().toLowerCase();
-          if (s === "true") return true;
-          if (s === "false") return false;
-        }
-        return undefined;
-      };
-      const done = toBool(maybeDone);
-      updateItemData(itemId, (prev) => {
-        let next = prev as ProjectData;
-        const list = (next.field4 ?? []);
-        // If a plain numeric was provided, allow using it as index (0- or 1-based)
-        if (!list.some((c) => c.id === targetId) && /^\d+$/.test(targetId)) {
-          const n = parseInt(targetId, 10);
-          let idx = -1;
-          if (n >= 0 && n < list.length) idx = n; // 0-based
-          else if (n > 0 && n - 1 < list.length) idx = n - 1; // 1-based
-          if (idx >= 0) targetId = list[idx].id;
-        }
-        if (typeof text === "string") next = projectSetField4ItemText(next, targetId, text);
-        if (typeof done === "boolean") next = projectSetField4ItemDone(next, targetId, done);
-        return next;
-      });
-    },
-  });
-
-  useCopilotAction({
-    name: "removeProjectChecklistItem",
-    description: "Remove a checklist item from a project by id.",
-    available: "remote",
-    parameters: [
-      { name: "itemId", type: "string", required: true, description: "Target item id (project)." },
-      { name: "checklistItemId", type: "string", required: true, description: "Checklist item id to remove." },
-    ],
-    handler: ({ itemId, checklistItemId }: { itemId: string; checklistItemId: string }) => {
-      updateItemData(itemId, (prev) => projectRemoveField4Item(prev as ProjectData, checklistItemId));
-    },
-  });
-
-  // Entity field updates and field3 (tags)
-  useCopilotAction({
-    name: "setEntityField1",
-    description: "Update entity field1 (text).",
-    available: "remote",
-    parameters: [
-      { name: "value", type: "string", required: true, description: "New value for field1." },
-      { name: "itemId", type: "string", required: true, description: "Target item id (entity)." },
-    ],
-    handler: ({ value, itemId }: { value: string; itemId: string }) => {
-      updateItemData(itemId, (prev) => {
-        const anyPrev = prev;
-        if (typeof anyPrev.field1 === "string") {
-          return { ...anyPrev, field1: value } as ItemData;
-        }
-        return prev;
-      });
-    },
-  });
-
-  useCopilotAction({
-    name: "setEntityField2",
-    description: "Update entity field2 (select).",
-    available: "remote",
-    parameters: [
-      { name: "value", type: "string", required: true, description: "New value for field2." },
-      { name: "itemId", type: "string", required: true, description: "Target item id (entity)." },
-    ],
-    handler: ({ value, itemId }: { value: string; itemId: string }) => {
-      updateItemData(itemId, (prev) => {
-        const anyPrev = prev as { field2?: string };
-        if (typeof anyPrev.field2 === "string") {
-          return { ...anyPrev, field2: value } as ItemData;
-        }
-        return prev;
-      });
-    },
-  });
-
-  useCopilotAction({
-    name: "addEntityField3",
-    description: "Add a tag to entity field3 (tags) if not present.",
-    available: "remote",
-    parameters: [
-      { name: "tag", type: "string", required: true, description: "Tag to add." },
-      { name: "itemId", type: "string", required: true, description: "Target item id (entity)." },
-    ],
-    handler: ({ tag, itemId }: { tag: string; itemId: string }) => {
-      updateItemData(itemId, (prev) => {
-        const e = prev as EntityData;
-        const current = new Set<string>((e.field3 ?? []) as string[]);
-        current.add(tag);
-        return { ...e, field3: Array.from(current) } as EntityData;
-      });
-    },
-  });
-
-  useCopilotAction({
-    name: "removeEntityField3",
-    description: "Remove a tag from entity field3 (tags) if present.",
-    available: "remote",
-    parameters: [
-      { name: "tag", type: "string", required: true, description: "Tag to remove." },
-      { name: "itemId", type: "string", required: true, description: "Target item id (entity)." },
-    ],
-    handler: ({ tag, itemId }: { tag: string; itemId: string }) => {
-      updateItemData(itemId, (prev) => {
-        const e = prev as EntityData;
-        return { ...e, field3: ((e.field3 ?? []) as string[]).filter((t) => t !== tag) } as EntityData;
-      });
-    },
-  });
-
-  // Chart field1 (metrics) CRUD
-  useCopilotAction({
-    name: "addChartField1",
-    description: "Add a new metric (field1 entries).",
-    available: "remote",
-    parameters: [
-      { name: "itemId", type: "string", required: true, description: "Target item id (chart)." },
-      { name: "label", type: "string", required: false, description: "Metric label (optional)." },
-      { name: "value", type: "number", required: false, description: "Metric value 0..100 (optional)." },
-    ],
-    handler: ({ itemId, label, value }: { itemId: string; label?: string; value?: number }) => {
-      const normLabel = (label ?? "").trim();
-      // 1) If a metric with same label exists, return its id
-      const item = (viewState.items ?? initialState.items).find((it) => it.id === itemId);
-      if (item && item.type === "chart") {
-        const list = ((item.data as ChartData).field1 ?? []);
-        const dup = normLabel ? list.find((m) => (m.label ?? "").trim() === normLabel) : undefined;
-        if (dup) return dup.id;
-      }
-      // 2) Per-chart throttle to avoid rapid duplicates
-      const now = Date.now();
-      const key = `${itemId}`;
-      const recent = lastMetricCreationRef.current[key];
-      const valKey: number | "" = typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : "";
-      if (recent && recent.label === normLabel && recent.value === valKey && now - recent.ts < 800) {
-        return recent.id;
-      }
-      let createdId = "";
-      updateItemData(itemId, (prev) => {
-        const { next, createdId: id } = chartAddField1Metric(prev as ChartData, label, value);
-        createdId = id;
-        return next;
-      });
-      lastMetricCreationRef.current[key] = { label: normLabel, value: valKey, id: createdId, ts: now };
-      return createdId;
-    },
-  });
-
-  useCopilotAction({
-    name: "setChartField1Label",
-    description: "Update chart field1 entry label by index.",
-    available: "remote",
-    parameters: [
-      { name: "itemId", type: "string", required: true, description: "Target item id (chart)." },
-      { name: "index", type: "number", required: true, description: "Metric index (0-based)." },
-      { name: "label", type: "string", required: true, description: "New metric label." },
-    ],
-    handler: ({ itemId, index, label }: { itemId: string; index: number; label: string }) => {
-      updateItemData(itemId, (prev) => chartSetField1Label(prev as ChartData, index, label));
-    },
-  });
-
-  useCopilotAction({
-    name: "setChartField1Value",
-    description: "Update chart field1 entry value by index (0..100).",
-    available: "remote",
-    parameters: [
-      { name: "itemId", type: "string", required: true, description: "Target item id (chart)." },
-      { name: "index", type: "number", required: true, description: "Metric index (0-based)." },
-      { name: "value", type: "number", required: true, description: "Metric value 0..100." },
-    ],
-    handler: ({ itemId, index, value }: { itemId: string; index: number; value: number }) => {
-      updateItemData(itemId, (prev) => chartSetField1Value(prev as ChartData, index, value));
-    },
-  });
-
-  // Clear chart metric value by index
-  useCopilotAction({
-    name: "clearChartField1Value",
-    description: "Clear chart field1 entry value by index (sets to empty).",
-    available: "remote",
-    parameters: [
-      { name: "itemId", type: "string", required: true, description: "Target item id (chart)." },
-      { name: "index", type: "number", required: true, description: "Metric index (0-based)." },
-    ],
-    handler: ({ itemId, index }: { itemId: string; index: number }) => {
-      updateItemData(itemId, (prev) => chartSetField1Value(prev as ChartData, index, ""));
-    },
-  });
-
-  useCopilotAction({
-    name: "removeChartField1",
-    description: "Remove a chart field1 entry by index.",
-    available: "remote",
-    parameters: [
-      { name: "itemId", type: "string", required: true, description: "Target item id (chart)." },
-      { name: "index", type: "number", required: true, description: "Metric index (0-based)." },
-    ],
-    handler: ({ itemId, index }: { itemId: string; index: number }) => {
-      updateItemData(itemId, (prev) => chartRemoveField1Metric(prev as ChartData, index));
-    },
-  });
 
   useCopilotAction({
     name: "createItem",
-    description: "Create a new item.",
+    description: "Create a new document.",
     available: "remote",
     parameters: [
-      { name: "type", type: "string", required: true, description: "One of: project, entity, note, chart." },
-      { name: "name", type: "string", required: false, description: "Optional item name." },
+      { name: "name", type: "string", required: false, description: "Optional document name." },
     ],
-    handler: ({ type, name }: { type: string; name?: string }) => {
-      const t = (type as CardType);
+    handler: ({ name }: { name?: string }) => {
       const normalized = (name ?? "").trim();
 
-      // 1) Name-based idempotency: if an item with same type+name exists, return it
+      // 1) Name-based idempotency: if a document with same name exists, return it
       if (normalized) {
-        const existing = (viewState.items ?? initialState.items).find((it) => it.type === t && (it.name ?? "").trim() === normalized);
+        const existing = (viewState.items ?? initialState.items).find((it) => it.type === "document" && (it.name ?? "").trim() === normalized);
         if (existing) {
           return existing.id;
         }
       }
-      // 2) Per-run throttle: avoid duplicate creations within a short window for identical type+name
+      // 2) Per-run throttle: avoid duplicate creations within a short window for identical name
       const now = Date.now();
       const recent = lastCreationRef.current;
-      if (recent && recent.type === t && (recent.name ?? "") === normalized && now - recent.ts < 5000) {
+      if (recent && recent.type === "document" && (recent.name ?? "") === normalized && now - recent.ts < 5000) {
         return recent.id;
       }
-      const id = addItem(t, name);
-      lastCreationRef.current = { type: t, name: normalized, id, ts: now };
+      const id = addItem("document", name);
+      lastCreationRef.current = { type: "document", name: normalized, id, ts: now };
       return id;
     },
   });
@@ -1002,8 +583,8 @@ export default function CopilotKitPage() {
             const previewResult = await previewResponse.json();
             
             // Check if the sheet has a different format than canvas
-            const hasCanvasFormat = viewState.items.some(item => 
-              item.type && ['project', 'entity', 'note', 'chart'].includes(item.type)
+            const hasCanvasFormat = viewState.items.some(item =>
+              item.type && item.type === 'document'
             );
             
             const sheetHasData = previewResult.data && previewResult.data.items && previewResult.data.items.length > 0;
@@ -1567,24 +1148,24 @@ export default function CopilotKitPage() {
                 labels={{
                   title: "Agent",
                   initial:
-                    "👋 Share a brief or ask to extract fields. Changes will sync with the canvas in real time.",
+                    "👋 Share your ideas or ask me to help with document creation. Changes will sync with the canvas in real time.",
                 }}
                 suggestions={[
                   {
-                    title: "Add a Project",
-                    message: "Create a new project.",
+                    title: "Create a Document",
+                    message: "Create a new document.",
                   },
                   {
-                    title: "Add an Entity",
-                    message: "Create a new entity.",
+                    title: "Write Content",
+                    message: "Help me write content for my document.",
                   },
                   {
-                    title: "Add a Note",
-                    message: "Create a new note.",
+                    title: "Edit Document",
+                    message: "Update the content in my document.",
                   },
                   {
-                    title: "Add a Chart",
-                    message: "Create a new chart.",
+                    title: "Document Structure",
+                    message: "Help me organize my document content.",
                   },
                 ]}
               />
@@ -1593,9 +1174,9 @@ export default function CopilotKitPage() {
         </aside>
         {/* Main Content */}
         <main className="relative flex flex-1 h-full">
-          <div ref={scrollAreaRef} className="relative overflow-auto size-full px-4 sm:px-8 md:px-10 py-4">
+          <div ref={scrollAreaRef} className="relative overflow-auto size-full px-4 sm:px-6 md:px-8 py-4">
             <div className={cn(
-              "relative mx-auto max-w-7xl h-full min-h-8",
+              "relative w-full h-full min-h-8",
               (showJsonView || (viewState.items ?? []).length === 0) && "flex flex-col",
             )}>
               {/* Global Title & Description (hidden in JSON view) */}
@@ -1645,7 +1226,7 @@ export default function CopilotKitPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="grid gap-6 lg:grid-cols-2 pb-20">
+                    <div className="space-y-6 pb-20">
                       {(viewState.items ?? []).map((item) => (
                         <article key={item.id} className="relative rounded-2xl border p-5 shadow-sm transition-colors ease-out bg-card hover:border-accent/40 focus-within:border-accent/60">
                           <button
@@ -1917,7 +1498,7 @@ export default function CopilotKitPage() {
 
                 <div className="rounded-2xl border border-border/70 bg-muted px-5 py-4 text-xs text-muted-foreground">
                   <p><span className="font-medium text-foreground">Heads up:</span> New Sheets open in a new tab. If you import, ensure Composio has access to the document.</p>
-                  <p className="mt-2">We automatically map rows into projects, entities, notes, or charts so your canvas stays structured.</p>
+                  <p className="mt-2">We automatically map rows into documents so your canvas stays structured.</p>
                 </div>
 
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -2175,7 +1756,7 @@ export default function CopilotKitPage() {
 
                 <div className="rounded-2xl border border-border/70 bg-muted px-5 py-4 text-xs text-muted-foreground">
                   <p><span className="font-medium text-foreground">Heads up:</span> New Docs open in a new tab. Ensure Composio has access to your documents.</p>
-                  <p className="mt-2">We intelligently parse document structure into projects, entities, notes, and charts.</p>
+                  <p className="mt-2">We intelligently parse document content and structure into canvas documents.</p>
                 </div>
 
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">

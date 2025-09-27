@@ -1,48 +1,13 @@
-export interface ChecklistItem {
-  id: string;
-  text: string;
-  done: boolean;
-  proposed: boolean;
+export type CardType = "document";
+
+export interface DocumentData {
+  content: string; // rich text content
+  createdAt?: string; // creation timestamp
+  modifiedAt?: string; // last modification timestamp
+  wordCount?: number; // word count for the document
 }
 
-export interface LinkItem {
-  title: string;
-  url: string;
-}
-
-export type CardType = "project" | "entity" | "note" | "chart";
-
-export interface ProjectData {
-  field1: string; // text
-  field2: string; // select
-  field3: string; // date
-  field4: ChecklistItem[]; // checklist
-  field4_id: number; // id counter
-}
-
-export interface EntityData {
-  field1: string; // text
-  field2: string; // select
-  field3: string[]; // tags
-  field3_options: string[]; // options
-}
-
-export interface NoteData {
-  field1?: string; // textarea
-}
-
-export interface ChartMetric {
-  id: string;
-  label: string;
-  value: number | ""; // 0..100
-}
-
-export interface ChartData {
-  field1: ChartMetric[]; // metrics
-  field1_id: number; // id counter
-}
-
-export type ItemData = ProjectData | EntityData | NoteData | ChartData;
+export type ItemData = DocumentData;
 
 export interface Item {
   id: string;
