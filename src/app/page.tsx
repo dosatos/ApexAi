@@ -1129,20 +1129,12 @@ export default function CopilotKitPage() {
                 }}
                 suggestions={[
                   {
-                    title: "Create a Document",
-                    message: "Create a new document.",
+                    title: "Compare the companies.",
+                    message: "Compare the companies.",
                   },
                   {
-                    title: "Write Content",
-                    message: "Help me write content for my document.",
-                  },
-                  {
-                    title: "Edit Document",
-                    message: "Update the content in my document.",
-                  },
-                  {
-                    title: "Document Structure",
-                    message: "Help me organize my document content.",
+                    title: "Summarize",
+                    message: "Summarize the content of the documents.",
                   },
                 ]}
               />
@@ -1283,20 +1275,12 @@ export default function CopilotKitPage() {
             }}
             suggestions={[
               {
-                title: "Add a Project",
-                message: "Create a new project.",
+                title: "Compare the companies.",
+                message: "Compare the companies.",
               },
               {
-                title: "Add an Entity",
-                message: "Create a new entity.",
-              },
-              {
-                title: "Add a Note",
-                message: "Create a new note.",
-              },
-              {
-                title: "Add a Chart",
-                message: "Create a new chart.",
+                title: "Summarize",
+                message: "Summarize the content of the documents.",
               },
             ]}
           />
