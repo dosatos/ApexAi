@@ -315,6 +315,86 @@ Each card type has specific fields defined in the agent:
 
 </details>
 
+### Concepts
+
+<details>
+
+<summary>Backend tools -></summary>
+
+With LlamaIndex's `get_ag_ui_workflow_router`, you can define backend tools.
+
+```py
+def hello_world(name: str) -> str:
+  return f"Hello, {str}"
+
+agentic_chat_router = get_ag_ui_workflow_router(
+    llm=OpenAI(model="gpt-4.1"),
+    backend_tools=[hello_world]
+)
+```
+
+You can then render this with CopilotKit's `useCopilotAction`
+
+```tsx
+// page.tsx
+import { useCopilotAction } from "@copilotkit/core"
+
+const Main = () => {
+  // ...
+
+  useCopilotAction({
+    name: "hello_world"
+    render: () => {
+      return <div>Called hello_world tool...</div>
+    }
+  })
+
+  // ...
+}
+```
+  
+</details>
+
+
+<details>
+
+<summary>Frontend tools -></summary>
+
+With LlamaIndex's `get_ag_ui_workflow_router`, you can also define frontend tools. They get called by the agent
+but handled on the frontend.
+
+```py
+def hello_world(name: str) -> str:
+  return "called hello_world"
+
+agentic_chat_router = get_ag_ui_workflow_router(
+    llm=OpenAI(model="gpt-4.1"),
+    frontend_tools=[hello_world]
+)
+```
+
+You can then handle this tool with CopilotKit's `useCopilotAction`
+
+```tsx
+// page.tsx
+import { useCopilotAction } from "@copilotkit/core"
+
+const Main = () => {
+  // ...
+
+  useCopilotAction({
+    name: "hello_world"
+    handle: () => {
+      return "hello, world!" // tool result
+    }
+  })
+
+  // ...
+}
+```
+  
+</details>
+
 ### Customization Guide
 
 <details>
