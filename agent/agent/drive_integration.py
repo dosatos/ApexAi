@@ -57,7 +57,7 @@ def list_drive_files(folder_id: Optional[str] = None, page_size: int = 20) -> Op
             arguments=query_params
         )
 
-        print(f"Raw Composio result: {result}")
+        # print(f"Raw Composio result: {result}")
 
         if not result or not result.get("successful"):
             print(f"Drive API call failed: {result}")
@@ -166,18 +166,35 @@ def get_file_content(file_id: str) -> Optional[Dict[str, Any]]:
 
         elif mime_type == "application/vnd.google-apps.document":
             # Export Google Docs as plain text
+            print(f"Attempting to export Google Doc: {file_name}")
             export_result = composio.tools.execute(
                 user_id=user_id,
-                slug="GOOGLEDRIVE_PARSE_FILE",
+                slug="GOOGLEDRIVE_DOWNLOAD_FILE",
                 arguments={
                     "file_id": file_id,
                     "mime_type": "text/plain"
                 }
             )
 
+            print(f"Export result for Google Doc: {export_result}")
+
             if export_result and export_result.get("successful"):
                 content_data = export_result.get("data", {})
-                content = content_data.get("content", "")
+
+                # Read from downloaded file path
+                downloaded_file_path = content_data.get("downloaded_file_content", "")
+                content = ""
+                if downloaded_file_path and os.path.exists(downloaded_file_path):
+                    try:
+                        with open(downloaded_file_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        print(f"Successfully read {len(content)} characters from exported Google Doc")
+                    except Exception as e:
+                        print(f"Error reading exported file {downloaded_file_path}: {e}")
+                        content = content_data.get("content", "")
+                else:
+                    content = content_data.get("content", "")
+
                 print(f"Successfully exported {len(content)} characters from Google Doc: {file_name}")
 
                 return {
@@ -188,6 +205,8 @@ def get_file_content(file_id: str) -> Optional[Dict[str, Any]]:
                     "content_type": "google_doc",
                     "metadata": file_metadata
                 }
+            else:
+                print(f"Failed to export Google Doc: {export_result}")
 
         elif mime_type == "application/vnd.google-apps.spreadsheet":
             # Export Google Sheets as CSV
